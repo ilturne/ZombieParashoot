@@ -617,6 +617,7 @@ GameObject:
   m_Component:
   - component: {fileID: 866557944}
   - component: {fileID: 866557943}
+  - component: {fileID: 866557945}
   m_Layer: 0
   m_Name: GameManager
   m_TagString: Untagged
@@ -657,6 +658,31 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &866557945
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 866557942}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5311637d2a4243b4a8bc2d365d5a5560, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  powerUpPrefabs:
+  - {fileID: 895256002172556701, guid: f14eb9b0691aca64685af3e2d01cc9a3, type: 3}
+  - {fileID: 3704414349921539404, guid: a49d73d3071a4bc468fc448a44fe266f, type: 3}
+  - {fileID: 5605569187166458343, guid: c632fd4a6f5657e44aa7a317112ca209, type: 3}
+  - {fileID: 2980784419529843537, guid: dad736ef86b4147488e5bba28315e4a2, type: 3}
+  playerTransform: {fileID: 2073890765}
+  spawnInterval: 10
+  spawnYLevel: 1
+  worldBoundsX: {x: 2, y: 18}
+  worldBoundsZ: {x: 0, y: 500}
+  maxSpawnRadiusFromPlayer: 50
+  minSpawnRadiusFromPlayer: 20
+  maxSpawnAttemptsPerInterval: 10
 --- !u!1 &985831477 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 8657247358329661667, guid: e97db0dd12d48d844a1e545d44360585, type: 3}

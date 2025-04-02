@@ -81,7 +81,7 @@ public class ThirdPersonMovement : MonoBehaviour
 
             // Viewport points (Y=0 is bottom, Y=1 is top)
             Vector3 bottomViewportPoint = new Vector3(0.5f, 0f, distance); // Using 0.5f for horizontal center
-            Vector3 topViewportPoint = new Vector3(0.5f, 0.5f, distance);
+            Vector3 topViewportPoint = new Vector3(0.5f, 0.7f, distance);
 
             // Convert viewport points to world points
             Vector3 bottomWorldPoint = mainCamera.ViewportToWorldPoint(bottomViewportPoint);
