@@ -15,7 +15,7 @@ MonoBehaviour:
   prefabs:
   - gameObject: {fileID: 2172471636107800588, guid: 9f00871d1f1463b4ab58cd6bc7ef0b37, type: 3}
     settings:
-      m_Strength: 50
+      m_Strength: 16.75
       m_RotationRangeMin: {x: 0, y: 0, z: 0}
       m_RotationRangeMax: {x: 0, y: 0, z: 0}
       m_ScaleRangeMin: {x: 1, y: 1, z: 1}
@@ -31,7 +31,7 @@ MonoBehaviour:
     name: Cactus1
   - gameObject: {fileID: 1577900651635755405, guid: 1afba03b96442e94483637e075919ebd, type: 3}
     settings:
-      m_Strength: 50
+      m_Strength: 30.25
       m_RotationRangeMin: {x: 0, y: 0, z: 0}
       m_RotationRangeMax: {x: 0, y: 0, z: 0}
       m_ScaleRangeMin: {x: 1, y: 1, z: 1}
@@ -79,7 +79,7 @@ MonoBehaviour:
     name: Cactus4
   - gameObject: {fileID: 1090054125417444430, guid: 30bd39f54d732064c8891c4afbcad3bb, type: 3}
     settings:
-      m_Strength: 50
+      m_Strength: 25.75
       m_RotationRangeMin: {x: 0, y: 0, z: 0}
       m_RotationRangeMax: {x: 0, y: 0, z: 0}
       m_ScaleRangeMin: {x: 1, y: 1, z: 1}
@@ -95,7 +95,7 @@ MonoBehaviour:
     name: Cactus5
   - gameObject: {fileID: 8612419659826746767, guid: 4f46f06206c9b324c9ee9089d1b45e21, type: 3}
     settings:
-      m_Strength: 50
+      m_Strength: 28
       m_RotationRangeMin: {x: 0, y: 0, z: 0}
       m_RotationRangeMax: {x: 0, y: 0, z: 0}
       m_ScaleRangeMin: {x: 1, y: 1, z: 1}
@@ -111,7 +111,7 @@ MonoBehaviour:
     name: Cactus6
   - gameObject: {fileID: 140492000370432750, guid: 9fb4ef7fb64dc4c408964e74ed2fe396, type: 3}
     settings:
-      m_Strength: 79.617645
+      m_Strength: 100
       m_RotationRangeMin: {x: 0, y: 0, z: 0}
       m_RotationRangeMax: {x: 0, y: 0, z: 0}
       m_ScaleRangeMin: {x: 1, y: 1, z: 1}
@@ -159,7 +159,7 @@ MonoBehaviour:
     name: Palm3
   - gameObject: {fileID: 8282720113453043954, guid: fce807852a4acca419eeb3d5fd9a8ca7, type: 3}
     settings:
-      m_Strength: 83.77732
+      m_Strength: 100
       m_RotationRangeMin: {x: 0, y: 0, z: 0}
       m_RotationRangeMax: {x: 0, y: 0, z: 0}
       m_ScaleRangeMin: {x: 1, y: 1, z: 1}
@@ -175,7 +175,7 @@ MonoBehaviour:
     name: Palm4
   - gameObject: {fileID: 4090555171948344373, guid: c17535c038470134c9ad171e5f3ec2cc, type: 3}
     settings:
-      m_Strength: 71.298325
+      m_Strength: 100
       m_RotationRangeMin: {x: 0, y: 0, z: 0}
       m_RotationRangeMax: {x: 0, y: 0, z: 0}
       m_ScaleRangeMin: {x: 1, y: 1, z: 1}
@@ -191,7 +191,7 @@ MonoBehaviour:
     name: Palm5
   - gameObject: {fileID: 7134262039593392684, guid: 076ddcf3e89253c479418a861439e537, type: 3}
     settings:
-      m_Strength: 69.21849
+      m_Strength: 100
       m_RotationRangeMin: {x: 0, y: 0, z: 0}
       m_RotationRangeMax: {x: 0, y: 0, z: 0}
       m_ScaleRangeMin: {x: 1, y: 1, z: 1}
@@ -255,7 +255,7 @@ MonoBehaviour:
     name: Ruins3
   - gameObject: {fileID: 8019462622708141387, guid: 1496c843ff50fd245afcb63247a1b541, type: 3}
     settings:
-      m_Strength: 62.978996
+      m_Strength: 54.149166
       m_RotationRangeMin: {x: 0, y: 0, z: 0}
       m_RotationRangeMax: {x: 0, y: 0, z: 0}
       m_ScaleRangeMin: {x: 1, y: 1, z: 1}
