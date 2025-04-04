@@ -2,7 +2,7 @@ using UnityEngine;
 
 public class Checkpoint_Terrain_Spawn : MonoBehaviour
 {
-    public SpawnGroupData_Desert spawnData;
+    public SpawnGroupData spawnData;
 
     private bool hasSpawned = false;
 

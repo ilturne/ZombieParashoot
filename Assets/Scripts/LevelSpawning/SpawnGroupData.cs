@@ -2,7 +2,7 @@ using UnityEngine;
 using System.Collections.Generic;
 
 [CreateAssetMenu(fileName = "SpawnGroupData", menuName = "Spawner/SpawnGroupData")]
-public class SpawnGroupData_Desert : ScriptableObject
+public class SpawnGroupData : ScriptableObject
 {
     [System.Serializable]
     public class SpawnInfo

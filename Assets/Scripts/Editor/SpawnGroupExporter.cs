@@ -14,7 +14,7 @@ public class SpawnGroupExporter
             return;
         }
 
-        var data = ScriptableObject.CreateInstance<SpawnGroupData_Desert>();
+        var data = ScriptableObject.CreateInstance<SpawnGroupData>();
 
         foreach (Transform child in selected.transform)
         {
@@ -25,7 +25,7 @@ public class SpawnGroupExporter
                 continue;
             }
 
-            data.spawnInfos.Add(new SpawnGroupData_Desert.SpawnInfo
+            data.spawnInfos.Add(new SpawnGroupData.SpawnInfo
             {
                 prefab = prefab,
                 position = child.position,
