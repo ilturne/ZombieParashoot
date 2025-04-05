@@ -1,3 +1,7 @@
 # Auto detect text files and perform LF normalization
 * text=auto
-*.unity filter=lfs diff=lfs merge=lfs -text
+git lfs track "*.unity"      # Tracks all Unity Scene files
+git lfs track "*.fbx"       # Tracks common 3D model files
+git lfs track "*.psd"       # Tracks Photoshop files (often large source textures)
+git lfs track "*.wav"       # Tracks uncompressed audio
+git lfs track "*.asset"     # Tracks Unity asset files (can include Terrain data, large ScriptableObjects)
