@@ -6,6 +6,7 @@ public class SceneTransitionTrigger : MonoBehaviour
     [Header("Scene Loading")]
     public string sceneToLoad = "PlainsRegion";
     public string sceneToUnload;
+    public bool loadOnStart = false;
 
     private bool triggered = false;
 
@@ -13,7 +14,7 @@ public class SceneTransitionTrigger : MonoBehaviour
     private void Start()
     {
         // Load the starting region additively
-        if (!string.IsNullOrEmpty(sceneToLoad) && !IsSceneLoaded(sceneToLoad))
+        if (loadOnStart && !string.IsNullOrEmpty(sceneToLoad) && !IsSceneLoaded(sceneToLoad))
         {
             SceneManager.LoadSceneAsync(sceneToLoad, LoadSceneMode.Additive);
         }
@@ -41,9 +42,10 @@ public class SceneTransitionTrigger : MonoBehaviour
     {
         for (int i = 0; i < SceneManager.sceneCount; i++)
         {
-            Scene loadedScene = SceneManager.GetSceneAt(i);
-            if (loadedScene.name == sceneName)
+            if (SceneManager.GetSceneAt(i).name == sceneName)
+            {
                 return true;
+            }
         }
         return false;
     }
