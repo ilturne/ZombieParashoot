@@ -26,6 +26,11 @@ public class SceneTransitionTrigger : MonoBehaviour
         if (triggered || !other.CompareTag("Player")) return;
         triggered = true;
 
+        if (CheckpointManager.Instance != null)
+        {
+            CheckpointManager.Instance.SetCheckpoint(other.transform.position, sceneToLoad);
+        }
+
         if (!string.IsNullOrEmpty(sceneToLoad) && !IsSceneLoaded(sceneToLoad))
         {
             SceneManager.LoadSceneAsync(sceneToLoad, LoadSceneMode.Additive);
