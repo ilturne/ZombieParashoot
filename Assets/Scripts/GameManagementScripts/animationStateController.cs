@@ -1,9 +1,9 @@
 using UnityEngine;
 
+
 public class AnimationStateController : MonoBehaviour
 {
     private Animator animator;
-
     void Awake()
     {
         animator = GetComponent<Animator>();
