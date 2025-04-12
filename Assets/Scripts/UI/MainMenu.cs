@@ -2,10 +2,12 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 public class MainMenu : MonoBehaviour
 {
+
     public void PlayGame()
     {
-        // Load the game scene (assuming it's named "GameScene")
-        SceneManager.LoadScene(1);
+
+        SceneManager.LoadScene(1, LoadSceneMode.Single); // Load the game scene (index 1 in build settings)
+
     }
 
     public void QuitGame()
