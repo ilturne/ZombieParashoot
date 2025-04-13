@@ -3,58 +3,62 @@ using UnityEngine;
 public class Bullet : MonoBehaviour
 {
     [Header("Bullet Settings")]
-    [SerializeField] private float damage = 25f;
-    [SerializeField] private float lifetime = 3.0f;
-    // Optional: [SerializeField] private GameObject impactEffectPrefab;
-
+    public float damage = 20f;          // Damage dealt to zombies
+    public float speed = 30f;           // Speed of the bullet
+    public float lifetime = 3f;         // How long the bullet lives before being destroyed
+    
+    [Header("Visual Effects")]
+    public GameObject hitEffect;        // Optional hit effect prefab
+    
     private Rigidbody rb;
-
-    void Awake() { rb = GetComponent<Rigidbody>(); }
-    void Start() { Destroy(gameObject, lifetime); }
+    
+    void Start()
+    {
+        // Get rigidbody
+        rb = GetComponent<Rigidbody>();
+        if (rb == null)
+        {
+            rb = gameObject.AddComponent<Rigidbody>();
+        }
+        
+        // Configure rigidbody
+        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+        rb.useGravity = false;
+        
+        // Set initial velocity
+        rb.linearVelocity = transform.forward * speed;
+        
+        // Destroy after lifetime
+        Destroy(gameObject, lifetime);
+    }
+    
     void OnCollisionEnter(Collision collision)
     {
-        HandleImpact(collision.gameObject, collision.contacts[0].point, collision.contacts[0].normal);
-    }
-
-    void HandleImpact(GameObject hitObject, Vector3 hitPoint, Vector3 hitNormal)
-    {
-        if (hitObject.CompareTag("Zombie"))
+        // Check if we hit a zombie
+        if (collision.gameObject.CompareTag("Zombie"))
         {
-            ZombieHealth zombieHealth = hitObject.GetComponent<ZombieHealth>();
+            // Try to deal damage to the zombie
+            ZombieAi zombieAi = collision.gameObject.GetComponent<ZombieAi>();
+            if (zombieAi != null)
+            {
+                zombieAi.TakeDamage(damage);
+            }
+            
+            // Try ZombieHealth component as well
+            ZombieHealth zombieHealth = collision.gameObject.GetComponent<ZombieHealth>();
             if (zombieHealth != null)
             {
-                GameObject playerObject = GameObject.FindGameObjectWithTag("Player");
-                if (playerObject != null)
-                {
-                    ThirdPersonMovement playerMovement = playerObject.GetComponent<ThirdPersonMovement>();
-                    // Check if player exists AND InstaKill is active
-                    if (playerMovement != null && playerMovement.IsInstaKillActive)
-                    {
-                        // Player has InstaKill, call the specific method
-                        Debug.Log($"Insta-Killing {hitObject.name}!");
-                        zombieHealth.InstaKill();
-                    }
-                    else
-                    {
-                        // Player doesn't have InstaKill OR couldn't find script, deal normal damage
-                        Debug.Log($"Dealing normal {damage} damage to {hitObject.name}");
-                        zombieHealth.TakeDamage(damage);
-                    }
-                }
-                else
-                {
-                    // Could not find player to check status, deal normal damage as fallback
-                     Debug.LogWarning("Bullet couldn't find Player to check InstaKill status, dealing normal damage.");
-                     zombieHealth.TakeDamage(damage);
-                }
-                // --- End InstaKill Check ---
+                zombieHealth.TakeDamage(damage);
             }
         }
-
-        // Optional: Instantiate impact effect
-        // if (impactEffectPrefab != null) { Instantiate(impactEffectPrefab, hitPoint, Quaternion.LookRotation(hitNormal)); }
-
-        // Destroy the bullet after impact
+        
+        // Spawn hit effect if assigned
+        if (hitEffect != null)
+        {
+            Instantiate(hitEffect, transform.position, Quaternion.identity);
+        }
+        
+        // Destroy bullet on impact
         Destroy(gameObject);
     }
 }
