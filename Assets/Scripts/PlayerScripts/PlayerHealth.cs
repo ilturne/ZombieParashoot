@@ -9,11 +9,12 @@ public class PlayerHealth : MonoBehaviour
 
     // Optional: UI References (Assign these in the Inspector if you have them)
     [Header("UI (Optional)")]
-    //[SerializeField] private Slider healthSlider;
-
-    // Basic event for death (other scripts can subscribe to this)
+    [SerializeField] private CameraRoll cameraRoll; 
+    [SerializeField] private ThirdPersonMovement playerMovement;
+    [SerializeField] private GameObject GameOverCanvas; // Reference to the Game Over UI canvas
+    private GameManager gameManager;
     public System.Action OnPlayerDeath;
-
+    
     void Start()
     {
         // Initialize health based on the base maximum
@@ -80,15 +81,20 @@ public class PlayerHealth : MonoBehaviour
         // TODO: Implement actual death logic
         OnPlayerDeath?.Invoke();
         // gameObject.SetActive(false); // Example
+        if (cameraRoll != null)
+        {
+            cameraRoll.enabled = false; // Disable camera roll on death
+        }
+        if (playerMovement != null)
+        {
+            playerMovement.enabled = false; // Disable player movement on death
+        }
+        if (gameManager != null)
+        {
+            GameOverCanvas.SetActive(true); // Show Game Over UI
+            gameManager.PlayerDied();
+
+        }
     }
 
-    // private void UpdateHealthUI()
-    // {
-    //     if (healthSlider != null)
-    //     {
-    //         // Update the slider's max value in case maxHealth changed
-    //         healthSlider.maxValue = maxHealth;
-    //         healthSlider.value = currentHealth;
-    //     }
-    // }
 }

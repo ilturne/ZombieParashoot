@@ -34,6 +34,7 @@ public class Bullet : MonoBehaviour
     
     void OnCollisionEnter(Collision collision)
     {
+        Debug.Log("Hit a zombie: " + collision.gameObject.name);
         // Check if we hit a zombie
         if (collision.gameObject.CompareTag("Zombie"))
         {
