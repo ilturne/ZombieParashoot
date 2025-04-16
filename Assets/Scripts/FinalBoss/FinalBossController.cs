@@ -37,6 +37,12 @@ public class FinalBossController : MonoBehaviour
     public float strafeChance = 0.3f;
     public bool useDynamicMovement = true;
 
+    [Header("UI")]
+    [SerializeField] private GameObject healthBarPrefab; // Prefab for the boss health bar
+    [SerializeField] private HealthBar healthBar;       // Reference to the health bar component
+    [SerializeField] private Vector3 healthBarOffset = new Vector3(0, 3, 0); // Position above the boss
+    [SerializeField] private float healthBarScale = 0.015f; // Scale for the health bar
+
     // Private variables
     private float currentDamage;
     private float nextAttackTime = 0f;
@@ -67,7 +73,24 @@ public class FinalBossController : MonoBehaviour
 
     void Start()
     {
-        animator = GetComponent<Animator>();
+         animator = GetComponent<Animator>();
+        if (animator == null)
+        {
+        Debug.LogError("FinalBossController: Missing Animator component!");
+        }
+        else
+        {
+            // Verify animation parameters exist
+            foreach (string anim in attackStates)
+            {
+                VerifyAnimation(anim);
+            }
+            VerifyAnimation(runState);
+            VerifyAnimation(idleState);
+            VerifyAnimation(walkBackState);
+            VerifyAnimation(strafeLeftState);
+            VerifyAnimation(strafeRightState);
+        }
         agent = GetComponent<NavMeshAgent>();
         player = GameObject.FindGameObjectWithTag("Player")?.transform;
         bossRenderer = GetComponentInChildren<Renderer>();
@@ -90,6 +113,68 @@ public class FinalBossController : MonoBehaviour
         
         // Start in idle
         PlayAnimation(idleState);
+
+        // Set up health bar
+        SetupHealthBar();
+    }
+    void VerifyAnimation(string animName)
+    {
+        if (animator == null) return;
+    
+        bool found = false;
+        foreach (AnimatorControllerParameter param in animator.parameters)
+        {
+            if (param.name == animName)
+            {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found)
+        {
+            Debug.LogWarning($"Animation '{animName}' not found in the Animator controller!");
+        }
+    }
+    void ConfigureAgent()
+    {
+        if (agent == null) return;
+    
+        agent.updatePosition = true;
+        agent.updateRotation = true;
+        agent.speed = walkSpeed;
+        agent.acceleration = 8f;
+        agent.angularSpeed = 120f;
+        agent.stoppingDistance = 0f; // Get right up to the player
+    
+        // Make sure the agent isn't stopped
+        agent.isStopped = false;
+        agent.ResetPath();
+    }
+    void SetupHealthBar()
+    {
+        // Create health bar if prefab is assigned
+        if (healthBar == null && healthBarPrefab != null)
+        {
+            // Instantiate the health bar above the boss
+            GameObject healthBarObj = Instantiate(healthBarPrefab, transform.position + healthBarOffset, Quaternion.identity);
+            
+            // Make it a child of the boss
+            healthBarObj.transform.SetParent(transform);
+            
+            // Set scale
+            healthBarObj.transform.localScale = new Vector3(healthBarScale, healthBarScale, healthBarScale);
+            
+            // Get the health bar component
+            healthBar = healthBarObj.GetComponentInChildren<HealthBar>();
+            
+            // Set the initial values
+            if (healthBar != null)
+            {
+                healthBar.SetMaxHealth(maxHealth);
+                healthBar.SetHealth(health);
+            }
+        }
     }
 
     void Update()
@@ -156,6 +241,13 @@ public class FinalBossController : MonoBehaviour
         if (bossMaterial != null)
         {
             StartCoroutine(PulseColor(originalColor, phase2Color, 2.0f));
+        }
+        
+        // Change health bar color to indicate phase 2
+        if (healthBar != null && healthBar.fill != null)
+        {
+            // This will use the gradient colors based on current health percentage
+            healthBar.SetHealth(health);
         }
         
         Debug.Log("Boss entering Phase 2! Damage increased to " + currentDamage);
@@ -264,7 +356,7 @@ public class FinalBossController : MonoBehaviour
         if (IsPlayingImportantAnimation()) return;
 
         Vector3 targetPosition;
-        
+    
         switch (currentMovementPattern)
         {
             case 1: // Strafe Left
@@ -272,27 +364,38 @@ public class FinalBossController : MonoBehaviour
                 PlayAnimation(strafeLeftState);
                 targetPosition = GetStrafePosition(true);
                 break;
-                
+            
             case 2: // Strafe Right
                 agent.speed = strafeSpeed;
                 PlayAnimation(strafeRightState);
                 targetPosition = GetStrafePosition(false);
                 break;
-                
+            
             case 3: // Walk Backward
                 agent.speed = walkSpeed;
                 PlayAnimation(walkBackState);
                 targetPosition = transform.position + (transform.position - player.position).normalized * 5f;
                 break;
-                
+            
             default: // Direct Approach
                 agent.speed = runSpeed;
+                // Force the run animation to play
                 PlayAnimation(runState);
                 targetPosition = player.position;
                 break;
         }
-        
+    
+        // Ensure the path is set
         agent.SetDestination(targetPosition);
+    
+        // Debug to check if NavMeshAgent is actually moving
+        if (agent.velocity.magnitude < 0.1f && !agent.pathPending)
+        {
+            // If not moving, try to adjust the destination slightly
+            Vector3 adjustedPosition = targetPosition + Random.insideUnitSphere * 2f;
+            agent.SetDestination(adjustedPosition);
+            Debug.Log("Boss was stuck, adjusting destination");
+        }
     }
 
     Vector3 GetStrafePosition(bool isLeft)
@@ -344,6 +447,12 @@ public class FinalBossController : MonoBehaviour
 
         health -= amount;
         
+        // Update health bar
+        if (healthBar != null)
+        {
+            healthBar.SetHealth(health);
+        }
+        
         if (health <= 0)
         {
             Die();
@@ -374,6 +483,12 @@ public class FinalBossController : MonoBehaviour
         string deathAnim = GetRandomDeathAnimation();
         PlayAnimation(deathAnim);
 
+        // Hide health bar
+        if (healthBar != null)
+        {
+            healthBar.gameObject.transform.parent.gameObject.SetActive(false);
+        }
+
         Invoke(nameof(ReturnToMenu), 5f);
     }
 
@@ -400,12 +515,18 @@ public class FinalBossController : MonoBehaviour
 
     void PlayAnimation(string stateName)
     {
-        // Check if we're already playing this animation
-        if (animator.GetCurrentAnimatorStateInfo(0).IsName(stateName))
+        if (animator == null) return;
+    
+        // Skip if we're already playing this animation
+        AnimatorStateInfo stateInfo = animator.GetCurrentAnimatorStateInfo(0);
+        if (stateInfo.IsName(stateName) && stateInfo.normalizedTime < 0.9f)
             return;
-            
-        // Use CrossFade for smoother transitions between animations
+        
+        // Force the animation to play by resetting the normalized time
         animator.CrossFade(stateName, 0.2f, 0);
+    
+        // Debug animation state
+        Debug.Log($"Boss playing animation: {stateName}");
     }
 
     // Check if we're playing an animation that shouldn't be interrupted

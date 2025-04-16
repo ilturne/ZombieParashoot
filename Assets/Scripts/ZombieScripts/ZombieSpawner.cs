@@ -12,6 +12,16 @@ public class ZombieSpawner : MonoBehaviour
     public int maxZombies = 20;               // Reduced from 50 to 20
     public int initialZombieCount = 10;       // Reduced from 20 to 10
     
+    [Header("Boss Area Settings")]
+    [Tooltip("When true, the spawner will reduce spawn rates when boss is active")]
+    public bool detectBossArea = true; 
+    [Tooltip("How far the spawner should check for a boss")]
+    public float bossDetectionRadius = 50f;
+    [Tooltip("Reduced max zombies when near boss")]
+    public int bossAreaMaxZombies = 5;
+    [Tooltip("Slower spawn interval near boss")]
+    public float bossAreaSpawnInterval = 5.0f;
+    
     [Header("Spawn Position")]
     public float minSpawnDistance = 15f;      // Increased min distance from player
     public float maxSpawnDistance = 25f;      // Increased max distance from player
@@ -43,6 +53,8 @@ public class ZombieSpawner : MonoBehaviour
     private Camera mainCamera;
     private bool initialSpawnComplete = false;
     private float minX, maxX;
+    public bool isInBossArea = false;
+    private FinalBossController nearbyBoss = null;
 
     void Start()
     {
@@ -112,6 +124,7 @@ public class ZombieSpawner : MonoBehaviour
         // Start spawning
         StartCoroutine(InitialZombieSpawn());
         StartCoroutine(SpawnZombiesRoutine());
+        StartCoroutine(CheckForBossAreaRoutine());
     }
 
     void Update()
@@ -124,6 +137,66 @@ public class ZombieSpawner : MonoBehaviour
         
         // Update spawn area center to follow player
         spawnAreaCenter.z = playerTransform.position.z - 20f;
+    }
+    
+    // NEW: Periodically check if player is in a boss area
+    IEnumerator CheckForBossAreaRoutine()
+    {
+        WaitForSeconds checkInterval = new WaitForSeconds(0.5f); // Check more frequently
+    
+        while (true)
+        {
+            if (detectBossArea && playerTransform != null)
+            {
+                // Try to find a boss in the area - use a larger radius to detect earlier
+                Collider[] colliders = Physics.OverlapSphere(playerTransform.position, bossDetectionRadius * 1.5f);
+                nearbyBoss = null;
+            
+                foreach (Collider col in colliders)
+                {
+                    // Check for boss component
+                    FinalBossController boss = col.GetComponentInParent<FinalBossController>();
+                    if (boss != null)
+                    {
+                        nearbyBoss = boss;
+                        break;
+                    }
+                
+                    // Also check for boss tag
+                    if (col.CompareTag("Boss"))
+                    {
+                        nearbyBoss = col.GetComponentInParent<FinalBossController>();
+                        if (nearbyBoss == null)
+                        {
+                            // If the object has the Boss tag but no controller,
+                            // we'll still count it as a boss area
+                            isInBossArea = true;
+                            Debug.Log("Found boss-tagged object without controller");
+                        }
+                        break;
+                    }
+                }
+            
+                // Update boss area status
+                bool wasInBossArea = isInBossArea;
+                isInBossArea = (nearbyBoss != null);
+            
+                // Log status change
+                if (isInBossArea != wasInBossArea && debugMode)
+                {
+                    if (isInBossArea)
+                    {
+                        Debug.Log("Entered boss area - stopping zombie spawning");
+                    }
+                    else
+                    {
+                        Debug.Log("Left boss area - resuming zombie spawning");
+                    }
+                }
+            }
+        
+            yield return checkInterval;
+        }
     }
 
     void OnDrawGizmos()
@@ -141,6 +214,13 @@ public class ZombieSpawner : MonoBehaviour
                 Gizmos.DrawLine(leftBoundary.position, leftBoundary.position + Vector3.forward * 100f);
                 Gizmos.DrawLine(rightBoundary.position, rightBoundary.position + Vector3.forward * 100f);
             }
+            
+            // Draw boss detection radius
+            if (playerTransform != null && detectBossArea)
+            {
+                Gizmos.color = isInBossArea ? Color.red : Color.yellow;
+                Gizmos.DrawWireSphere(playerTransform.position, bossDetectionRadius);
+            }
         }
     }
 
@@ -150,8 +230,25 @@ public class ZombieSpawner : MonoBehaviour
         
         Debug.Log($"Starting initial spawn of {initialZombieCount} zombies...");
         
+        // Check if we're starting in a boss area
+        if (detectBossArea)
+        {
+            Collider[] colliders = Physics.OverlapSphere(playerTransform.position, bossDetectionRadius);
+            foreach (Collider col in colliders)
+            {
+                if (col.CompareTag("Boss") || col.GetComponent<FinalBossController>() != null)
+                {
+                    isInBossArea = true;
+                    break;
+                }
+            }
+        }
+        
+        // If in boss area, reduce initial spawn
+        int actualInitialCount = isInBossArea ? Mathf.Min(initialZombieCount, bossAreaMaxZombies) : initialZombieCount;
+        
         // Spawn initial batch of zombies
-        for (int i = 0; i < initialZombieCount; i++)
+        for (int i = 0; i < actualInitialCount; i++)
         {
             if (SpawnZombie())
             {
@@ -167,20 +264,60 @@ public class ZombieSpawner : MonoBehaviour
     {
         // Wait for initial spawn to complete
         yield return new WaitUntil(() => initialSpawnComplete);
-        
+    
         while (true)
         {
-            // Count current zombies
-            GameObject[] zombies = GameObject.FindGameObjectsWithTag("Zombie");
+            // IMPORTANT: If in boss area, don't spawn any zombies at all
+            if (isInBossArea)
+            {
+                // If we're in the boss area, remove any existing zombies
+                if (detectBossArea && nearbyBoss != null)
+                {
+                    // Find all zombies
+                    GameObject[] zombies = GameObject.FindGameObjectsWithTag("Zombie");
+                
+                    // If there are more than 0 zombies, remove one of them
+                    // This gradually clears zombies rather than removing them all at once
+                    if (zombies.Length > 0)
+                    {
+                        // Find the furthest zombie from the player
+                        GameObject furthestZombie = zombies[0];
+                        float maxDistance = 0f;
+                    
+                        foreach (GameObject zombie in zombies)
+                        {
+                            float distance = Vector3.Distance(zombie.transform.position, playerTransform.position);
+                            if (distance > maxDistance)
+                            {
+                                maxDistance = distance;
+                                furthestZombie = zombie;
+                            }
+                        }
+                    
+                        // Destroy the furthest zombie
+                        if (furthestZombie != null)
+                        {
+                            Destroy(furthestZombie);
+                            Debug.Log("Removed zombie in boss area");
+                        }
+                    }
+                }
             
-            // Spawn more if below max
-            if (zombies.Length < maxZombies)
+                // Wait before checking again
+                yield return new WaitForSeconds(1.0f);
+                continue; // Skip the rest of the loop
+            }
+        
+            // Count current zombies
+            GameObject[] currentZombies = GameObject.FindGameObjectsWithTag("Zombie");
+        
+            // Only spawn more if below max
+            if (currentZombies.Length < maxZombies)
             {
                 SpawnZombie();
-                
+            
                 // If we're well below the limit, spawn a couple zombies to catch up
-                // Reduced from 3 to 2 zombies when below 50% capacity
-                if (zombies.Length < maxZombies * 0.5f)
+                if (currentZombies.Length < maxZombies * 0.5f)
                 {
                     for (int i = 0; i < 2; i++)
                     {
@@ -191,12 +328,11 @@ public class ZombieSpawner : MonoBehaviour
                     }
                 }
             }
-            
-            // Wait before next spawn - increased interval
+        
+            // Wait before next spawn
             yield return new WaitForSeconds(spawnInterval);
         }
     }
-
     bool SpawnZombie()
     {
         Vector3 spawnPosition = Vector3.zero;
@@ -216,6 +352,16 @@ public class ZombieSpawner : MonoBehaviour
             if (restrictToBounds && useSceneBoundaries)
             {
                 spawnPosition.x = Mathf.Clamp(spawnPosition.x, minX, maxX);
+            }
+            
+            // If in boss area, keep zombies further away
+            if (isInBossArea && nearbyBoss != null)
+            {
+                float distanceToBoss = Vector3.Distance(spawnPosition, nearbyBoss.transform.position);
+                if (distanceToBoss < 15f) // Minimum distance to boss
+                {
+                    continue; // Try another position
+                }
             }
             
             // Ensure the spawn position is on the NavMesh
@@ -322,7 +468,7 @@ public class ZombieSpawner : MonoBehaviour
             Debug.LogWarning("Zombie prefab is missing NavMeshAgent component!");
         }
         
-        // Configure AI component - FIXED: Changed from EnhancedZombieAi to ZombieAi
+        // Configure AI component
         ZombieAi zombieAI = zombie.GetComponent<ZombieAi>();
         if (zombieAI != null)
         {

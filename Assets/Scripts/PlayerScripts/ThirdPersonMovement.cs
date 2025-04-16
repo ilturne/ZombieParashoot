@@ -1,5 +1,5 @@
 using UnityEngine;
-using UnityEngine.UI; // Keep if you might add UI Text for bomb count later
+using UnityEngine.UI;
 using System.Collections;
 
 public class ThirdPersonMovement : MonoBehaviour
@@ -35,20 +35,26 @@ public class ThirdPersonMovement : MonoBehaviour
     public bool IsInstaKillActive => isInstaKillActive;
     private Camera mainCamera;
 
-    // *** NEW: Variables for Mouse Look Rotation ***
+    // *** Boss Area Camera Control Variables ***
+    [Header("Boss Area Camera Settings")]
+    [SerializeField] private bool inBossArea = false;
+    [SerializeField] private float bossAreaCameraDistance = 12.0f;
+    [SerializeField] private float bossAreaCameraHeight = 5.0f;
+    [SerializeField] private float cameraTransitionSpeed = 2.0f;
+    private Vector3 originalCameraOffset;
+    private bool hasStoredOriginalCameraPosition = false;
+
+    // *** Variables for Mouse Look Rotation ***
     [Header("Mouse Look Rotation")]
     [Tooltip("Set this LayerMask to only include the 'Ground' layer you created.")]
     [SerializeField] private LayerMask groundLayerMask; 
     [Tooltip("How far the raycast for mouse aiming should check.")]
     [SerializeField] private float mouseRayMaxDistance = 100f; 
-    // Optional: Add turn speed for smoother rotation
-    // [SerializeField] private float turnSpeed = 15f; 
-    // *** END NEW ***
 
     void Start()
     {
         controller = GetComponent<CharacterController>();
-        mainCamera = Camera.main; // Keep this, it's needed for raycasting
+        mainCamera = Camera.main;
         if (mainCamera != null)
         {
             cameraRoll = mainCamera.GetComponent<CameraRoll>();
@@ -65,35 +71,45 @@ public class ThirdPersonMovement : MonoBehaviour
             Debug.LogError("Bomb Prefab has not been assigned in the ThirdPersonMovement script Inspector! Bomb throwing will not work.");
         }
         
-        // *** NEW: Check if Ground Layer Mask is set ***
-        if (groundLayerMask == 0) // LayerMask value is 0 if nothing is selected
+        if (groundLayerMask == 0)
         {
             Debug.LogWarning("Ground Layer Mask is not set in the ThirdPersonMovement Inspector. Mouse rotation will not work correctly. Please set it to your 'Ground' layer.", this);
         }
-        // *** END NEW ***
     }
 
     void Update()
     {
         HandleMovement();
         HandleBombThrowInput(); 
-        HandleMouseRotation(); // *** NEW: Call rotation handling separately or at the end of HandleMovement ***
+        HandleMouseRotation();
+        
+        // Only update camera position if in boss area
+        if (inBossArea && mainCamera != null)
+        {
+            UpdateCameraPosition();
+        }
     }
 
     void HandleMovement()
     {
-        // Ground Check and Gravity (Keep this)
+        // Ground Check and Gravity
         groundedPlayer = controller.isGrounded;
         if (groundedPlayer && playerVelocity.y < 0) { playerVelocity.y = 0f; }
         if (!groundedPlayer) { playerVelocity.y += Physics.gravity.y * Time.deltaTime; }
 
-        // Input and Base Movement Vector (Keep this)
+        // Input and Base Movement Vector
         Vector3 moveInput = new Vector3(Input.GetAxis("Horizontal"), 0, Input.GetAxis("Vertical"));
-        if (cameraRoll != null && cameraRoll.IsRolling) { moveInput.z += cameraRoll.rollSpeed * Time.deltaTime; }
+        
+        // Only apply camera roll movement if it's enabled and we're not in the boss area
+        if (cameraRoll != null && cameraRoll.IsRolling && !inBossArea) 
+        { 
+            moveInput.z += cameraRoll.rollSpeed * Time.deltaTime; 
+        }
+        
         Vector3 desiredMoveDirection = moveInput;
         Vector3 desiredMoveDelta = desiredMoveDirection * playerSpeed * Time.deltaTime;
 
-        // Predict and Clamp Position (Keep this)
+        // Predict and Clamp Position
         Vector3 currentPos = transform.position;
         Vector3 predictedPos = currentPos + desiredMoveDelta;
         predictedPos.x = Mathf.Clamp(predictedPos.x, minX, maxX);
@@ -111,63 +127,66 @@ public class ThirdPersonMovement : MonoBehaviour
         }
         else { Debug.LogWarning("Main Camera not found, cannot clamp Z to view."); }
 
-        // Calculate Allowed Movement & Move (Keep this)
+        // Calculate Allowed Movement & Move
         Vector3 allowedMoveDelta = predictedPos - currentPos;
         controller.Move(allowedMoveDelta);
         controller.Move(playerVelocity * Time.deltaTime); // Apply gravity
-
-        // --- Rotation based on movement input is REMOVED ---
-        // *** REMOVED START ***
-        /* if (moveInput.sqrMagnitude > 0.01f) 
-        {
-            Vector3 lookDirection = new Vector3(moveInput.x, 0, moveInput.z).normalized;
-            if(lookDirection != Vector3.zero)
-                 transform.rotation = Quaternion.LookRotation(lookDirection);
-        }
-        */
-        // *** REMOVED END ***
     }
     
-    // *** NEW: Method to handle rotation towards mouse ***
+    // Method to handle camera positioning for boss area
+    void UpdateCameraPosition()
+    {
+        // Store original camera offset when first entering boss area
+        if (!hasStoredOriginalCameraPosition)
+        {
+            originalCameraOffset = mainCamera.transform.position - transform.position;
+            hasStoredOriginalCameraPosition = true;
+            Debug.Log("Stored original camera offset: " + originalCameraOffset);
+        }
+        
+        // Calculate desired offset for boss area
+        Vector3 targetOffset = new Vector3(
+            0, // Centered horizontally
+            bossAreaCameraHeight, // Higher up for boss fight
+            -bossAreaCameraDistance // Further back for boss fight
+        );
+        
+        // Current offset from player to camera
+        Vector3 currentOffset = mainCamera.transform.position - transform.position;
+        
+        // Smoothly interpolate camera position
+        Vector3 newOffset = Vector3.Lerp(currentOffset, targetOffset, Time.deltaTime * cameraTransitionSpeed);
+        
+        // Apply new camera position
+        mainCamera.transform.position = transform.position + newOffset;
+        
+        // Look at the player (plus a small height adjustment)
+        mainCamera.transform.LookAt(transform.position + Vector3.up * 1.5f);
+    }
+    
+    // Method to handle rotation towards mouse
     void HandleMouseRotation()
     {
-        if (mainCamera == null) return; // Need the camera
+        if (mainCamera == null) return;
 
-        // Create a ray from the camera going through the mouse cursor
+        // Create a ray from the camera through the mouse cursor
         Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
 
-        // Perform the raycast against the ground layer
+        // Raycast against the ground layer
         if (Physics.Raycast(ray, out RaycastHit hitInfo, mouseRayMaxDistance, groundLayerMask))
         {
-            // We hit the ground layer
             Vector3 targetPoint = hitInfo.point;
-
-            // Calculate the direction from the player to the hit point
             Vector3 directionToLook = targetPoint - transform.position;
+            directionToLook.y = 0f; // Keep on horizontal plane
 
-            // Keep the rotation only on the Y axis (ignore height differences)
-            directionToLook.y = 0f; 
-
-            // Check if the direction is valid (not zero)
-            if (directionToLook.sqrMagnitude > 0.01f) // Use sqrMagnitude for efficiency
+            if (directionToLook.sqrMagnitude > 0.01f)
             {
-                // Calculate the target rotation
+                // Calculate target rotation
                 Quaternion targetRotation = Quaternion.LookRotation(directionToLook);
-
-                // Apply the rotation directly (instant snap)
                 transform.rotation = targetRotation;
-
-                // --- Optional: Smooth Rotation ---
-                // Uncomment the line below and comment out the line above for smooth turning
-                // Make sure you have the 'turnSpeed' variable declared and assigned above.
-                // transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, turnSpeed * Time.deltaTime);
-                // --- End Optional ---
             }
         }
-        // Optional: Add an 'else' here if you want the player to do something 
-        // specific if the mouse isn't pointing at the ground (e.g., keep last rotation).
     }
-    // *** END NEW ***
 
     // --- Bomb Handling Methods --- 
     void HandleBombThrowInput()
@@ -236,7 +255,6 @@ public class ThirdPersonMovement : MonoBehaviour
         Debug.Log($"Bomb Count: {bombCount}");
         // if (bombCountText != null) { bombCountText.text = $"Bombs: {bombCount}"; }
     }
-    // --- End Bomb Handling Methods ---
 
     // --- InstaKill Methods ---
     public void ActivateInstaKill()
@@ -255,6 +273,27 @@ public class ThirdPersonMovement : MonoBehaviour
         isInstaKillActive = false;
         currentInstaKillCoroutine = null; 
     }
-    // --- End InstaKill Methods ---
-
-} // End of Class
+    
+    // --- Boss Area Methods ---
+    
+    // Called when the player enters/exits the boss area
+    public void SetBossAreaMode(bool enabled)
+    {
+        inBossArea = enabled;
+        Debug.Log("Boss area mode set to: " + enabled);
+        
+        // Enable/disable camera roll based on boss area
+        if (cameraRoll != null)
+        {
+            cameraRoll.enabled = !enabled; // Disable roll in boss area, enable outside
+            Debug.Log("Camera roll set to: " + !enabled);
+        }
+        
+        // If exiting boss area, restore original camera position
+        if (!enabled && hasStoredOriginalCameraPosition && mainCamera != null)
+        {
+            mainCamera.transform.position = transform.position + originalCameraOffset;
+            hasStoredOriginalCameraPosition = false;
+        }
+    }
+}
