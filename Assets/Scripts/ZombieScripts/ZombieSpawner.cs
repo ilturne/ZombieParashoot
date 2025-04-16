@@ -10,8 +10,8 @@ public class ZombieSpawner : MonoBehaviour
     
     [Header("Spawn Settings")]
     public float spawnInterval = 2.0f;
-    public int maxZombies = 20;
-    public int initialZombieCount = 10;
+    public int maxZombies = 15;
+    public int initialZombieCount = 5;
     
     [Header("Boss Area Settings")]
     [Tooltip("When true, the spawner will reduce spawn rates when boss is active")]
@@ -36,6 +36,9 @@ public class ZombieSpawner : MonoBehaviour
     public float frontSpawnAngle = 90f;
     [Tooltip("Angle in degrees considered as 'back' of player (total angle)")]
     public float backSpawnAngle = 90f;
+    [Tooltip("Percentage of spawns that should happen at closest distance")]
+    [Range(0f, 1f)]
+    public float closeSpawnPercentage = 0.4f;
     public Vector3 spawnAreaCenter;
     public Vector3 spawnAreaSize = new Vector3(16f, 0f, 100f);
     
@@ -70,9 +73,12 @@ public class ZombieSpawner : MonoBehaviour
     [Tooltip("Avoid spawning zombies that would block player's view")]
     public bool avoidBlockingCamera = true;
     [Tooltip("Minimum angle (degrees) from player's forward vector to avoid blocking view")]
-    public float minCameraAvoidanceAngle = 30f;
+    public float minCameraAvoidanceAngle = 20f;  // Reduced from 30f to 20f
     [Tooltip("Distance from player within which to check for camera blocking")]
     public float cameraBlockCheckDistance = 10f;
+    [Tooltip("Percentage of zombies that should try to spawn where they'll be visible")]
+    [Range(0f, 1f)]
+    public float visibleSpawnPercentage = 0.7f;
     
     [Header("Debug")]
     public bool debugMode = true;
@@ -421,6 +427,52 @@ public class ZombieSpawner : MonoBehaviour
         
             // Count current zombies
             GameObject[] currentZombies = GameObject.FindGameObjectsWithTag("Zombie");
+            
+            // Check how many zombies are visible to the player
+            int visibleZombies = 0;
+            if (mainCamera != null)
+            {
+                foreach (GameObject zombie in currentZombies)
+                {
+                    Vector3 viewportPoint = mainCamera.WorldToViewportPoint(zombie.transform.position);
+                    bool isVisible = (viewportPoint.x >= 0 && viewportPoint.x <= 1 && 
+                                     viewportPoint.y >= 0 && viewportPoint.y <= 1 && 
+                                     viewportPoint.z > 0);
+                    if (isVisible)
+                    {
+                        visibleZombies++;
+                    }
+                }
+            }
+            
+            // Adjust spawn rate based on visible zombies
+            float currentSpawnInterval = spawnInterval;
+            if (visibleZombies < 3 && currentZombies.Length < maxZombies * 0.7f)
+            {
+                // Spawn more quickly if few zombies are visible
+                currentSpawnInterval = spawnInterval * 0.5f;
+                
+                // Force spawn multiple zombies to ensure visibility
+                for (int i = 0; i < 2; i++)
+                {
+                    if (currentZombies.Length + i < maxZombies)
+                    {
+                        if (Random.value < 0.7f)
+                        {
+                            // Prioritize side spawns for better visibility
+                            if (allowSideSpawns)
+                            {
+                                SpawnZombieInZone(Random.value < 0.5f ? SpawnZone.Left : SpawnZone.Right);
+                            }
+                            else
+                            {
+                                SpawnZombie();
+                            }
+                            yield return new WaitForSeconds(0.2f);
+                        }
+                    }
+                }
+            }
         
             // Only spawn more if below max
             if (currentZombies.Length < maxZombies)
@@ -448,7 +500,7 @@ public class ZombieSpawner : MonoBehaviour
                     SpawnZombie();
                 }
             
-                // If we're well below the limit, spawn a couple more zombies to catch up
+                // If we're well below the limit, spawn additional zombies to catch up
                 if (currentZombies.Length < maxZombies * 0.5f)
                 {
                     for (int i = 0; i < 2; i++)
@@ -462,8 +514,300 @@ public class ZombieSpawner : MonoBehaviour
             }
         
             // Wait before next spawn
-            yield return new WaitForSeconds(spawnInterval);
+            yield return new WaitForSeconds(currentSpawnInterval);
         }
+    }
+    
+    // Get a random spawn position based on allowed zones
+    Vector3 GetRandomSpawnPosition()
+    {
+        // Determine which spawn zones are available
+        List<SpawnZone> availableZones = new List<SpawnZone>();
+        
+        if (allowFrontSpawns) availableZones.Add(SpawnZone.Front);
+        if (allowBackSpawns) availableZones.Add(SpawnZone.Back);
+        if (allowSideSpawns) 
+        {
+            availableZones.Add(SpawnZone.Left);
+            availableZones.Add(SpawnZone.Right);
+        }
+        
+        // If no zones are enabled, default to all zones
+        if (availableZones.Count == 0)
+        {
+            availableZones.Add(SpawnZone.Front);
+            availableZones.Add(SpawnZone.Back);
+            availableZones.Add(SpawnZone.Left);
+            availableZones.Add(SpawnZone.Right);
+        }
+        
+        // Pick a random zone
+        SpawnZone chosenZone = availableZones[Random.Range(0, availableZones.Count)];
+        
+        // Generate position based on zone
+        Vector3 spawnPos = Vector3.zero;
+        
+        // Sometimes use a closer distance for more consistent zombie presence
+        float distance;
+        if (Random.value < closeSpawnPercentage)
+        {
+            distance = Random.Range(minSpawnDistance, minSpawnDistance + (maxSpawnDistance - minSpawnDistance) * 0.5f);
+        }
+        else
+        {
+            distance = Random.Range(minSpawnDistance, maxSpawnDistance);
+        }
+        
+        // Prioritize spawning in areas that will move into camera view
+        // Default spawning angles to be closer to the sides but still move into view
+        switch (chosenZone)
+        {
+            case SpawnZone.Front:
+                // In front of player with some angle variation, but not directly in front
+                // Use a narrower range so zombies are more likely to be visible
+                float frontAngle = Random.Range(-frontSpawnAngle/3, frontSpawnAngle/3);
+                Vector3 frontDir = Quaternion.Euler(0, frontAngle, 0) * playerTransform.forward;
+                spawnPos = playerTransform.position + frontDir * distance;
+                break;
+                
+            case SpawnZone.Back:
+                // Behind player but in a position that will still be noticed
+                float backAngle = Random.Range(-backSpawnAngle/4, backSpawnAngle/4);
+                Vector3 backDir = Quaternion.Euler(0, backAngle, 0) * -playerTransform.forward;
+                spawnPos = playerTransform.position + backDir * distance;
+                break;
+                
+            case SpawnZone.Left:
+                // To the left of player, but at an angle where they'll move into view
+                // Adjusted angle range to be more visible but still spawn off-screen
+                float leftSideAngle = Random.Range(-75, -45);
+                Vector3 leftDir = Quaternion.Euler(0, leftSideAngle, 0) * playerTransform.forward;
+                spawnPos = playerTransform.position + leftDir * distance;
+                break;
+                
+            case SpawnZone.Right:
+                // To the right of player, but at an angle where they'll move into view
+                // Adjusted angle range to be more visible but still spawn off-screen
+                float rightSideAngle = Random.Range(45, 75);
+                Vector3 rightDir = Quaternion.Euler(0, rightSideAngle, 0) * playerTransform.forward;
+                spawnPos = playerTransform.position + rightDir * distance;
+                break;
+        }
+        
+        // Set proper Y level
+        spawnPos.y = playerTransform.position.y;
+        
+        return spawnPos;
+    }
+    
+    // Validate if a position is suitable for spawning
+    bool IsValidSpawnPosition(Vector3 position)
+    {
+        // Check if in boss area - don't spawn too close to boss
+        if (isInBossArea && nearbyBoss != null)
+        {
+            float distanceToBoss = Vector3.Distance(position, nearbyBoss.transform.position);
+            if (distanceToBoss < 15f)
+            {
+                return false;
+            }
+        }
+        
+        // Check camera blocking if enabled
+        if (avoidBlockingCamera && mainCamera != null)
+        {
+            // Only check for positions relatively close to the player
+            float distanceToPlayer = Vector3.Distance(position, playerTransform.position);
+            if (distanceToPlayer < cameraBlockCheckDistance)
+            {
+                // Get direction from player to spawn position
+                Vector3 directionToSpawn = (position - playerTransform.position).normalized;
+                
+                // Check angle between player's forward and direction to spawn
+                float angle = Vector3.Angle(playerTransform.forward, directionToSpawn);
+                
+                // If the angle is too small, this zombie might block the view
+                if (angle < minCameraAvoidanceAngle)
+                {
+                    return false;
+                }
+            }
+        }
+        
+        // Check if position is directly visible in camera (don't spawn right in front of player)
+        if (mainCamera != null)
+        {
+            Vector3 viewportPoint = mainCamera.WorldToViewportPoint(position);
+            bool isDirectlyVisible = (viewportPoint.x >= 0.1f && viewportPoint.x <= 0.9f && 
+                                     viewportPoint.y >= 0.1f && viewportPoint.y <= 0.9f && 
+                                     viewportPoint.z > 0);
+            
+            if (isDirectlyVisible)
+            {
+                return false; // Don't spawn directly in camera view
+            }
+            
+            // Check if position is at least near the camera bounds
+            // This ensures zombies spawn where they'll soon be visible
+            bool isNearCameraEdge = (viewportPoint.x >= -0.5f && viewportPoint.x <= 1.5f && 
+                                    viewportPoint.y >= -0.5f && viewportPoint.y <= 1.5f && 
+                                    viewportPoint.z > 0);
+            
+            // If the position is too far outside camera bounds, it's not ideal
+            if (!isNearCameraEdge)
+            {
+                // We'll still allow these positions sometimes, but with reduced probability
+                if (Random.value < 0.7f)
+                {
+                    return false;
+                }
+            }
+        }
+        
+        return true;
+    }
+    
+    // Spawn a zombie in a random position
+    bool SpawnZombie()
+    {
+        Vector3 spawnPosition = Vector3.zero;
+        bool positionFound = false;
+        
+        // Try multiple spawn positions
+        for (int attempt = 0; attempt < maxSpawnAttempts; attempt++)
+        {
+            spawnPosition = GetRandomSpawnPosition();
+            
+            // Apply boundary constraints
+            if (restrictToBounds && useSceneBoundaries)
+            {
+                spawnPosition.x = Mathf.Clamp(spawnPosition.x, minX, maxX);
+            }
+            
+            // Ensure the spawn position is on the NavMesh
+            if (ensureOnNavMesh)
+            {
+                UnityEngine.AI.NavMeshHit hit;
+                if (UnityEngine.AI.NavMesh.SamplePosition(spawnPosition, out hit, navMeshSampleDistance, UnityEngine.AI.NavMesh.AllAreas))
+                {
+                    spawnPosition = hit.position;
+                    if (IsValidSpawnPosition(spawnPosition))
+                    {
+                        positionFound = true;
+                        break;
+                    }
+                }
+            }
+            else if (IsValidSpawnPosition(spawnPosition))
+            {
+                positionFound = true;
+                break;
+            }
+        }
+        
+        if (!positionFound)
+        {
+            if (debugMode)
+            {
+                Debug.LogWarning("Failed to find valid spawn position after " + maxSpawnAttempts + " attempts");
+            }
+            return false;
+        }
+        
+        return SpawnZombieAtPosition(spawnPosition);
+    }
+
+    // Spawn a zombie in a specific zone (front, back, left, right)
+    bool SpawnZombieInZone(SpawnZone zone)
+    {
+        Vector3 spawnPosition = Vector3.zero;
+        bool positionFound = false;
+        
+        // Try multiple attempts to find a valid position in the requested zone
+        for (int attempt = 0; attempt < maxSpawnAttempts; attempt++)
+        {
+            // Determine distance - use closer distance when forced spawning
+            float distance;
+            if (Random.value < closeSpawnPercentage)
+            {
+                distance = Random.Range(minSpawnDistance, minSpawnDistance + (maxSpawnDistance - minSpawnDistance) * 0.5f);
+            }
+            else
+            {
+                distance = Random.Range(minSpawnDistance, maxSpawnDistance);
+            }
+            
+            // Generate position based on zone
+            switch (zone)
+            {
+                case SpawnZone.Front:
+                    // In front of player with some angle variation, but not directly in front
+                    float frontAngle = Random.Range(-frontSpawnAngle/3, frontSpawnAngle/3);
+                    Vector3 frontDir = Quaternion.Euler(0, frontAngle, 0) * playerTransform.forward;
+                    spawnPosition = playerTransform.position + frontDir * distance;
+                    break;
+                    
+                case SpawnZone.Back:
+                    // Behind player but in a position that will still be noticed
+                    float backAngle = Random.Range(-backSpawnAngle/4, backSpawnAngle/4);
+                    Vector3 backDir = Quaternion.Euler(0, backAngle, 0) * -playerTransform.forward;
+                    spawnPosition = playerTransform.position + backDir * distance;
+                    break;
+                    
+                case SpawnZone.Left:
+                    // Use a more consistent angle range for side spawns
+                    float leftSideAngle = Random.Range(-75, -45);
+                    Vector3 leftDir = Quaternion.Euler(0, leftSideAngle, 0) * playerTransform.forward;
+                    spawnPosition = playerTransform.position + leftDir * distance;
+                    break;
+                    
+                case SpawnZone.Right:
+                    // Use a more consistent angle range for side spawns
+                    float rightSideAngle = Random.Range(45, 75);
+                    Vector3 rightDir = Quaternion.Euler(0, rightSideAngle, 0) * playerTransform.forward;
+                    spawnPosition = playerTransform.position + rightDir * distance;
+                    break;
+            }
+            // Set proper Y level
+            spawnPosition.y = playerTransform.position.y;
+            
+            // Apply boundary constraints
+            if (restrictToBounds && useSceneBoundaries)
+            {
+                spawnPosition.x = Mathf.Clamp(spawnPosition.x, minX, maxX);
+            }
+            
+            // Ensure the spawn position is on the NavMesh
+            if (ensureOnNavMesh)
+            {
+                UnityEngine.AI.NavMeshHit hit;
+                if (UnityEngine.AI.NavMesh.SamplePosition(spawnPosition, out hit, navMeshSampleDistance, UnityEngine.AI.NavMesh.AllAreas))
+                {
+                    spawnPosition = hit.position;
+                    if (IsValidSpawnPosition(spawnPosition))
+                    {
+                        positionFound = true;
+                        break;
+                    }
+                }
+            }
+            else if (IsValidSpawnPosition(spawnPosition))
+            {
+                positionFound = true;
+                break;
+            }
+        }
+        
+        if (!positionFound)
+        {
+            if (debugMode)
+            {
+                Debug.LogWarning("Failed to find valid spawn position in zone " + zone + " after " + maxSpawnAttempts + " attempts");
+            }
+            return false;
+        }
+        
+        return SpawnZombieAtPosition(spawnPosition);
     }
     
     // Spawn a group of zombies around a central point
@@ -550,175 +894,6 @@ public class ZombieSpawner : MonoBehaviour
         }
         
         return zombiesSpawned;
-    }
-    
-    // Get a random spawn position based on allowed zones
-    Vector3 GetRandomSpawnPosition()
-    {
-        // Determine which spawn zones are available
-        List<SpawnZone> availableZones = new List<SpawnZone>();
-        
-        if (allowFrontSpawns) availableZones.Add(SpawnZone.Front);
-        if (allowBackSpawns) availableZones.Add(SpawnZone.Back);
-        if (allowSideSpawns) 
-        {
-            availableZones.Add(SpawnZone.Left);
-            availableZones.Add(SpawnZone.Right);
-        }
-        
-        // If no zones are enabled, default to all zones
-        if (availableZones.Count == 0)
-        {
-            availableZones.Add(SpawnZone.Front);
-            availableZones.Add(SpawnZone.Back);
-            availableZones.Add(SpawnZone.Left);
-            availableZones.Add(SpawnZone.Right);
-        }
-        
-        // Pick a random zone
-        SpawnZone chosenZone = availableZones[Random.Range(0, availableZones.Count)];
-        
-        // Generate position based on zone
-        Vector3 spawnPos = Vector3.zero;
-        float distance = Random.Range(minSpawnDistance, maxSpawnDistance);
-        
-        switch (chosenZone)
-        {
-            case SpawnZone.Front:
-                // In front of player with some angle variation
-                float frontAngle = Random.Range(-frontSpawnAngle/2, frontSpawnAngle/2);
-                Vector3 frontDir = Quaternion.Euler(0, frontAngle, 0) * playerTransform.forward;
-                spawnPos = playerTransform.position + frontDir * distance;
-                break;
-                
-            case SpawnZone.Back:
-                // Behind player with some angle variation
-                float backAngle = Random.Range(-backSpawnAngle/2, backSpawnAngle/2);
-                Vector3 backDir = Quaternion.Euler(0, backAngle, 0) * -playerTransform.forward;
-                spawnPos = playerTransform.position + backDir * distance;
-                break;
-                
-            case SpawnZone.Left:
-                // To the left of player
-                float leftSideAngle = Random.Range(-90 - (180-frontSpawnAngle-backSpawnAngle)/4, 
-                                                 -90 + (180-frontSpawnAngle-backSpawnAngle)/4);
-                Vector3 leftDir = Quaternion.Euler(0, leftSideAngle, 0) * playerTransform.forward;
-                spawnPos = playerTransform.position + leftDir * distance;
-                break;
-                
-            case SpawnZone.Right:
-                // To the right of player
-                float rightSideAngle = Random.Range(90 - (180-frontSpawnAngle-backSpawnAngle)/4, 
-                                                  90 + (180-frontSpawnAngle-backSpawnAngle)/4);
-                Vector3 rightDir = Quaternion.Euler(0, rightSideAngle, 0) * playerTransform.forward;
-                spawnPos = playerTransform.position + rightDir * distance;
-                break;
-        }
-        
-        // Set proper Y level
-        spawnPos.y = playerTransform.position.y;
-        
-        return spawnPos;
-    }
-    
-    // Validate if a position is suitable for spawning
-    bool IsValidSpawnPosition(Vector3 position)
-    {
-        // Check if in boss area - don't spawn too close to boss
-        if (isInBossArea && nearbyBoss != null)
-        {
-            float distanceToBoss = Vector3.Distance(position, nearbyBoss.transform.position);
-            if (distanceToBoss < 15f)
-            {
-                return false;
-            }
-        }
-        
-        // Check camera blocking if enabled
-        if (avoidBlockingCamera && mainCamera != null)
-        {
-            // Only check for positions relatively close to the player
-            float distanceToPlayer = Vector3.Distance(position, playerTransform.position);
-            if (distanceToPlayer < cameraBlockCheckDistance)
-            {
-                // Get direction from player to spawn position
-                Vector3 directionToSpawn = (position - playerTransform.position).normalized;
-                
-                // Check angle between player's forward and direction to spawn
-                float angle = Vector3.Angle(playerTransform.forward, directionToSpawn);
-                
-                // If the angle is too small, this zombie might block the view
-                if (angle < minCameraAvoidanceAngle)
-                {
-                    return false;
-                }
-            }
-        }
-        
-        // Check if position is visible in camera
-        if (mainCamera != null)
-        {
-            Vector3 viewportPoint = mainCamera.WorldToViewportPoint(position);
-            bool isVisible = (viewportPoint.x >= 0 && viewportPoint.x <= 1 && 
-                             viewportPoint.y >= 0 && viewportPoint.y <= 1 && 
-                             viewportPoint.z > 0);
-            
-            if (isVisible)
-            {
-                return false; // Don't spawn in camera view
-            }
-        }
-        
-        return true;
-    }
-    
-    bool SpawnZombie()
-    {
-        Vector3 spawnPosition = Vector3.zero;
-        bool positionFound = false;
-        
-        // Try multiple spawn positions
-        for (int attempt = 0; attempt < maxSpawnAttempts; attempt++)
-        {
-            spawnPosition = GetRandomSpawnPosition();
-            
-            // Apply boundary constraints
-            if (restrictToBounds && useSceneBoundaries)
-            {
-                spawnPosition.x = Mathf.Clamp(spawnPosition.x, minX, maxX);
-            }
-            
-            // Ensure the spawn position is on the NavMesh
-            if (ensureOnNavMesh)
-            {
-                UnityEngine.AI.NavMeshHit hit;
-                if (UnityEngine.AI.NavMesh.SamplePosition(spawnPosition, out hit, navMeshSampleDistance, UnityEngine.AI.NavMesh.AllAreas))
-                {
-                    spawnPosition = hit.position;
-                    if (IsValidSpawnPosition(spawnPosition))
-                    {
-                        positionFound = true;
-                        break;
-                    }
-                }
-            }
-            else if (IsValidSpawnPosition(spawnPosition))
-            {
-                positionFound = true;
-                break;
-            }
-        }
-        
-        if (!positionFound)
-        {
-            if (debugMode)
-            {
-                Debug.LogWarning("Failed to find valid spawn position after " + maxSpawnAttempts + " attempts");
-            }
-            return false;
-        }
-        
-        return SpawnZombieAtPosition(spawnPosition);
     }
     
     bool SpawnZombieAtPosition(Vector3 position)
