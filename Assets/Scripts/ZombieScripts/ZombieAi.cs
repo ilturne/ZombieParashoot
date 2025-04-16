@@ -7,6 +7,10 @@ public class ZombieAi : MonoBehaviour
     [Header("Movement Settings")]
     public float moveSpeed = 5.0f;        // Speed for zombies to run at
     public float turnSpeed = 120f;
+    [Tooltip("How often to update the path to the player")]
+    public float pathUpdateInterval = 0.2f; // Shorter interval for more responsive following
+    [Tooltip("Distance to start slowing down when approaching player")]
+    public float slowingDistance = 2.0f;  // Start slowing down when close
     
     [Header("Target Settings")]
     public Transform player;
@@ -19,6 +23,8 @@ public class ZombieAi : MonoBehaviour
     
     [Header("Animation")]
     public string runAnimParam = "isRunning";  // Only using run animation
+    [Tooltip("How quickly to blend animations")]
+    public float animationBlendSpeed = 0.2f;   // Smooth animation transitions
     
     [Header("Damage Visual")]
     public float damageFlashDuration = 0.2f;   // How long the zombie flashes red when damaged
@@ -34,6 +40,14 @@ public class ZombieAi : MonoBehaviour
     private Renderer[] renderers;         // All renderers on this zombie
     private Material[] originalMaterials; // Original materials to restore after damage
     private Color[] originalColors;       // Original colors to restore after damage
+    
+    // Movement state tracking
+    private Vector3 lastPosition;
+    private float lastPathUpdateTime = 0f;
+    private bool isStuck = false;
+    private float stuckCheckTime = 0f;
+    private const float STUCK_CHECK_INTERVAL = 1.0f;
+    private const float MINIMUM_MOVEMENT_DISTANCE = 0.1f;
     
     void Start()
     {
@@ -87,16 +101,39 @@ public class ZombieAi : MonoBehaviour
         renderers = GetComponentsInChildren<Renderer>();
         StoreMaterialColors();
         
-        // Configure agent with NO stopping distance
-        agent.speed = moveSpeed;
-        agent.angularSpeed = turnSpeed;
-        agent.stoppingDistance = 0f;  // Force zombies to get as close as possible
+        // Configure agent for smoother movement
+        ConfigureAgent();
         
         // Start running immediately - set destination to player
         if (player != null)
         {
             agent.SetDestination(player.position);
         }
+        
+        // Initialize position tracking for stuck detection
+        lastPosition = transform.position;
+        lastPathUpdateTime = Time.time;
+        stuckCheckTime = Time.time + STUCK_CHECK_INTERVAL;
+    }
+    
+    void ConfigureAgent()
+    {
+        if (agent == null) return;
+        
+        // Better acceleration and turning for smoother movement
+        agent.speed = moveSpeed;
+        agent.angularSpeed = turnSpeed;
+        agent.acceleration = 12f; // Increased from 8f for faster response
+        agent.stoppingDistance = 0.5f; // Small stopping distance so they don't bunch up
+        
+        // Improved path finding settings
+        agent.obstacleAvoidanceType = ObstacleAvoidanceType.HighQualityObstacleAvoidance;
+        agent.radius = 0.4f; // Slightly smaller radius to reduce bumping
+        agent.height = 1.8f;
+        agent.avoidancePriority = Random.Range(40, 60); // Varied priority helps with crowding
+        
+        // Enable auto-braking for smoother stops
+        agent.autoBraking = true;
     }
     
     // Store original materials and colors for damage flash effect
@@ -158,8 +195,19 @@ public class ZombieAi : MonoBehaviour
     {
         if (player == null) return;
         
-        // Always update destination to follow player
-        agent.SetDestination(player.position);
+        // Check if we're stuck and need to unstick ourselves
+        if (Time.time >= stuckCheckTime)
+        {
+            CheckIfStuck();
+            stuckCheckTime = Time.time + STUCK_CHECK_INTERVAL;
+        }
+        
+        // Update path to player frequently for smoother following
+        if (Time.time >= lastPathUpdateTime + pathUpdateInterval)
+        {
+            UpdatePathToPlayer();
+            lastPathUpdateTime = Time.time;
+        }
         
         // Get distance to player
         float distanceToPlayer = Vector3.Distance(transform.position, player.position);
@@ -196,7 +244,74 @@ public class ZombieAi : MonoBehaviour
             {
                 zombieAnimator.SetBool(runAnimParam, true);
             }
+            
+            // Adjust speed based on distance for smoother approach
+            if (distanceToPlayer < slowingDistance)
+            {
+                // Slow down when close to the player for smoother stopping
+                float speedFactor = Mathf.Clamp01(distanceToPlayer / slowingDistance);
+                agent.speed = Mathf.Lerp(moveSpeed * 0.5f, moveSpeed, speedFactor);
+            }
+            else
+            {
+                // Full speed when farther away
+                agent.speed = moveSpeed;
+            }
         }
+    }
+    
+    void UpdatePathToPlayer()
+    {
+        if (player == null || agent == null) return;
+        
+        // Set destination to current player position
+        agent.SetDestination(player.position);
+    }
+    
+    void CheckIfStuck()
+    {
+        if (agent == null || agent.isStopped) return;
+        
+        // Calculate movement since last check
+        float movementDistance = Vector3.Distance(transform.position, lastPosition);
+        
+        // If we've barely moved and we should be moving, we might be stuck
+        if (movementDistance < MINIMUM_MOVEMENT_DISTANCE && !agent.pathPending && agent.remainingDistance > agent.stoppingDistance)
+        {
+            if (!isStuck)
+            {
+                isStuck = true;
+                StartCoroutine(UnstickZombie());
+            }
+        }
+        else
+        {
+            isStuck = false;
+        }
+        
+        // Update last position for next check
+        lastPosition = transform.position;
+    }
+    
+    IEnumerator UnstickZombie()
+    {
+        // Try to unstick by temporarily adjusting path finding
+        agent.radius *= 0.8f;
+        agent.height *= 0.9f;
+        
+        // Jitter the destination slightly
+        if (player != null)
+        {
+            Vector3 jitteredPosition = player.position + Random.insideUnitSphere * 2f;
+            agent.SetDestination(jitteredPosition);
+        }
+        
+        // Short delay for the new settings to take effect
+        yield return new WaitForSeconds(0.5f);
+        
+        // Restore original settings
+        ConfigureAgent();
+        isStuck = false;
     }
     
     IEnumerator ResumeMovementAfterAttack(float delay)
@@ -366,5 +481,9 @@ public class ZombieAi : MonoBehaviour
         // Draw attack range
         Gizmos.color = Color.red;
         Gizmos.DrawWireSphere(transform.position, attackRange);
+        
+        // Draw slowing distance
+        Gizmos.color = new Color(1f, 0.5f, 0f, 0.5f); // Orange
+        Gizmos.DrawWireSphere(transform.position, slowingDistance);
     }
 }

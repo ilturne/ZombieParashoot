@@ -3,7 +3,7 @@ using UnityEngine;
 public class Bullet : MonoBehaviour
 {
     [Header("Bullet Settings")]
-    public float damage = 20f;          // Damage dealt to zombies
+    public float damage = 20f;          // Damage dealt to enemies
     public float speed = 30f;           // Speed of the bullet
     public float lifetime = 3f;         // How long the bullet lives before being destroyed
     
@@ -34,7 +34,6 @@ public class Bullet : MonoBehaviour
     
     void OnCollisionEnter(Collision collision)
     {
-        Debug.Log("Hit a zombie: " + collision.gameObject.name);
         // Check if we hit a zombie
         if (collision.gameObject.CompareTag("Zombie"))
         {
@@ -50,6 +49,17 @@ public class Bullet : MonoBehaviour
             if (zombieHealth != null)
             {
                 zombieHealth.TakeDamage(damage);
+            }
+        }
+        // NEW: Check if we hit the final boss
+        else if (collision.gameObject.CompareTag("Boss") || collision.gameObject.GetComponent<FinalBossController>() != null)
+        {
+            // Try to deal damage to the boss
+            FinalBossController bossController = collision.gameObject.GetComponent<FinalBossController>();
+            if (bossController != null)
+            {
+                bossController.TakeDamage(damage);
+                Debug.Log($"Hit boss with bullet for {damage} damage!");
             }
         }
         

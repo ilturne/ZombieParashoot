@@ -7,8 +7,13 @@ public class PlayerHealth : MonoBehaviour
     [SerializeField] private float maxHealth;           // The current maximum health (can be increased by shield)
     [SerializeField] private float currentHealth;       // Player's current HP
 
+    // UI Components
+    [Header("UI")]
+    [SerializeField] private HealthBar healthBar;  // Reference to the health bar
+    [SerializeField] private GameObject healthBarPrefab; // Prefab to instantiate if healthBar not assigned
+
     // Optional: UI References (Assign these in the Inspector if you have them)
-    [Header("UI (Optional)")]
+    [Header("Other Components (Optional)")]
     [SerializeField] private CameraRoll cameraRoll; 
     [SerializeField] private ThirdPersonMovement playerMovement;
     [SerializeField] private GameObject GameOverCanvas; // Reference to the Game Over UI canvas
@@ -18,8 +23,27 @@ public class PlayerHealth : MonoBehaviour
     void Start()
     {
         // Initialize health based on the base maximum
+        maxHealth = baseMaxHealth;
         currentHealth = baseMaxHealth; // Start full
-        //UpdateHealthUI();
+        
+        // Set up health bar if not already assigned
+        if (healthBar == null && healthBarPrefab != null)
+        {
+            // Instantiate the health bar prefab above the player
+            GameObject healthBarObj = Instantiate(healthBarPrefab, transform.position + Vector3.up * 2f, Quaternion.identity);
+            // Make it a child of the player
+            healthBarObj.transform.SetParent(transform);
+            // Get the HealthBar component
+            healthBar = healthBarObj.GetComponent<HealthBar>();
+        }
+        
+        // Initialize the health bar
+        if (healthBar != null)
+        {
+            healthBar.SetMaxHealth(maxHealth);
+            healthBar.SetHealth(currentHealth);
+        }
+        
         Debug.Log($"Player health initialized: {currentHealth}/{maxHealth} (Base Max: {baseMaxHealth})");
     }
 
@@ -31,8 +55,13 @@ public class PlayerHealth : MonoBehaviour
         // Clamp health between 0 and the CURRENT maximum health
         currentHealth = Mathf.Clamp(currentHealth, 0f, maxHealth);
 
+        // Update health bar
+        if (healthBar != null)
+        {
+            healthBar.SetHealth(currentHealth);
+        }
+
         Debug.Log($"Player took {damageAmount} damage. Current health: {currentHealth}/{maxHealth}");
-        //UpdateHealthUI();
 
         if (currentHealth <= 0)
         {
@@ -52,19 +81,32 @@ public class PlayerHealth : MonoBehaviour
         currentHealth = Mathf.Clamp(currentHealth, 0f, baseMaxHealth);
         currentHealth = Mathf.Clamp(currentHealth, 0f, maxHealth);
 
+        // Update health bar
+        if (healthBar != null)
+        {
+            healthBar.SetHealth(currentHealth);
+        }
+
         Debug.Log($"Player healed {healAmount} (capped at base max {baseMaxHealth}). Current health: {currentHealth}/{maxHealth}");
-        //UpdateHealthUI();
     }
 
     // Use this for the "Shield" power-up - Increases MAX and CURRENT health
     public void IncreaseMaxHealthAndHeal(float amountToAdd)
     {
-        if (currentHealth <= 0 && currentHealth != maxHealth) return; // Cannot apply if dead
+        if (currentHealth <= 0) return; // Cannot apply if dead
+        
+        maxHealth += amountToAdd; // Increase max health
         currentHealth += amountToAdd; // Add health points
         currentHealth = Mathf.Clamp(currentHealth, 0f, maxHealth);
 
+        // Update health bar max and current values
+        if (healthBar != null)
+        {
+            healthBar.SetMaxHealth(maxHealth);
+            healthBar.SetHealth(currentHealth);
+        }
+
         Debug.Log($"Player SHIELD increased max health by {amountToAdd} to {maxHealth}. Current health: {currentHealth}/{maxHealth}");
-        //UpdateHealthUI(); // Update UI to reflect new max and current health
     }
 
 
@@ -93,8 +135,6 @@ public class PlayerHealth : MonoBehaviour
         {
             GameOverCanvas.SetActive(true); // Show Game Over UI
             gameManager.PlayerDied();
-
         }
     }
-
 }

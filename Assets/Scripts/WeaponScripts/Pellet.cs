@@ -52,6 +52,39 @@ public class Pellet : MonoBehaviour
                 }
             }
         }
+        // NEW: Check if we hit the final boss
+        else if (hitObject.CompareTag("Boss") || hitObject.GetComponent<FinalBossController>() != null)
+        {
+            // Try to deal damage to the boss
+            FinalBossController bossController = hitObject.GetComponent<FinalBossController>();
+            if (bossController != null)
+            {
+                // Check for InstaKill
+                GameObject playerObject = GameObject.FindGameObjectWithTag("Player");
+                if (playerObject != null)
+                {
+                    ThirdPersonMovement playerMovement = playerObject.GetComponent<ThirdPersonMovement>();
+                    
+                    // If player has InstaKill active, apply massive damage but don't instantly kill boss
+                    if (playerMovement != null && playerMovement.IsInstaKillActive)
+                    {
+                        Debug.Log($"Applying InstaKill bonus damage to boss!");
+                        bossController.TakeDamage(damage * 5f); // 5x damage instead of instant death
+                    }
+                    else
+                    {
+                        // Apply normal damage
+                        Debug.Log($"Dealing normal {damage} damage to boss");
+                        bossController.TakeDamage(damage);
+                    }
+                }
+                else
+                {
+                    // Fallback if player not found
+                    bossController.TakeDamage(damage);
+                }
+            }
+        }
 
         // Spawn impact effect if provided
         if (impactEffectPrefab != null)
