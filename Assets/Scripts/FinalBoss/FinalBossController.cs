@@ -6,7 +6,7 @@ using System.Collections;
 public class FinalBossController : MonoBehaviour
 {
     [Header("Base Stats")]
-    public float maxHealth = 1000f;
+    public float maxHealth = 3000f;             
     private float health;
     public float attackRange = 4f;
     public float chaseRange = 30f;
@@ -16,41 +16,69 @@ public class FinalBossController : MonoBehaviour
     public float strafeSpeed = 3.0f;
     
     [Header("Phase 1")]
-    public float phase1Damage = 25f;
+    public float phase1Damage = 15f;
+    public float bulletDodgeChance = 0.3f;      // Chance to dodge bullets in phase 1
     
     [Header("Phase 2")]
-    public float phase2HealthThreshold = 500f;    // Health threshold to trigger phase 2
-    public float phase2DamageMultiplier = 2.0f;   // Damage multiplier for phase 2
-    public float phase2SpeedMultiplier = 1.5f;    // Speed multiplier for phase 2
-    public Color phase2Color = Color.red;         // Color tint for phase 2 (optional)
+    public float phase2HealthThreshold = 1800f;   // Adjusted for new max health
+    public float phase2DamageMultiplier = 1.3f;
+    public float phase2SpeedMultiplier = 1.7f;    // Increased from 1.5f
+    public float phase2DodgeChance = 0.6f;        // Higher chance to dodge in phase 2
+    public Color phase2Color = Color.red;
+    public bool phase2BulletReflection = true;    // New feature: can reflect bullets back
+    public float reflectionChance = 0.2f;         // Chance to reflect bullets
+    
+    [Header("Phase 3")]
+    public float phase3HealthThreshold = 800f;    // New final phase
+    public float phase3DamageMultiplier = 2.0f;   // Even more damage
+    public float phase3SpeedMultiplier = 2.0f;    // Even faster
+    public float phase3DodgeChance = 0.7f;        // High dodge chance
+    public Color phase3Color = new Color(1f, 0.4f, 0f, 1f); // Orange/fire color
+    public float healingPulseInterval = 15f;      // Time between healing pulses
+    public float healingAmount = 150f;            // Amount healed per pulse
     
     [Header("Teleportation")]
     public bool enableTeleportation = true;
-    public float teleportCooldown = 10f;          // Time between teleports
-    public float teleportMinDistance = 10f;       // Minimum distance to teleport
-    public float teleportMaxDistance = 15f;       // Maximum distance to teleport
-    public float teleportAttackChance = 0.7f;     // Chance to teleport behind player for attack
-    public GameObject teleportEffectPrefab;       // Optional VFX for teleportation
+    public float teleportCooldown = 8f;           // Reduced from 10f
+    public float teleportMinDistance = 10f;
+    public float teleportMaxDistance = 15f;
+    public float teleportAttackChance = 0.7f;
+    public GameObject teleportEffectPrefab;
+    
+    [Header("Bullet Dodge")]
+    public float dodgeDistance = 5f;              // How far the boss moves when dodging
+    public float dodgeCooldown = 1.0f;            // Cooldown between dodges
+    public float bulletDetectionRadius = 8f;      // How far to check for incoming bullets
+    public LayerMask bulletLayer;                 // Layer for bullets
+    public GameObject dodgeEffectPrefab;          // Optional effect for dodging
     
     [Header("Advanced Behavior")]
     public float strafeDuration = 2.0f;
-    public float strafeChance = 0.3f;
+    public float strafeChance = 0.4f;             // Increased from 0.3f
     public bool useDynamicMovement = true;
+    public GameObject shockwavePrefab;            // Prefab for shockwave attack
+    public float shockwaveCooldown = 15f;         // Time between shockwaves
+    public float shockwaveDamage = 10f;           // Damage dealt by shockwave
 
     [Header("UI")]
-    [SerializeField] private GameObject healthBarPrefab; // Prefab for the boss health bar
-    [SerializeField] private HealthBar healthBar;       // Reference to the health bar component
-    [SerializeField] private Vector3 healthBarOffset = new Vector3(0, 3, 0); // Position above the boss
-    [SerializeField] private float healthBarScale = 0.015f; // Scale for the health bar
+    [SerializeField] private GameObject healthBarPrefab;
+    [SerializeField] private HealthBar healthBar;
+    [SerializeField] private Vector3 healthBarOffset = new Vector3(0, 3, 0);
+    [SerializeField] private float healthBarScale = 0.015f;
 
     // Private variables
     private float currentDamage;
     private float nextAttackTime = 0f;
     private float nextTeleportTime = 0f;
+    private float nextDodgeTime = 0f;
+    private float nextShockwaveTime = 0f;
+    private float nextHealingPulseTime = 0f;
     private float nextMovementChangeTime = 0f;
     private bool isDead = false;
     private bool isPhaseTwo = false;
+    private bool isPhaseThree = false;
     private bool isFirstPhaseTransition = true;
+    private bool isSecondPhaseTransition = true;
     private int currentMovementPattern = 0;
     private Material bossMaterial;
     private Color originalColor;
@@ -116,7 +144,15 @@ public class FinalBossController : MonoBehaviour
 
         // Set up health bar
         SetupHealthBar();
+        
+        // Initialize timers
+        nextShockwaveTime = Time.time + shockwaveCooldown;
+        nextHealingPulseTime = Time.time + healingPulseInterval;
+        
+        // Start checking for bullets to dodge
+        StartCoroutine(CheckForBullets());
     }
+    
     void VerifyAnimation(string animName)
     {
         if (animator == null) return;
@@ -136,6 +172,7 @@ public class FinalBossController : MonoBehaviour
             Debug.LogWarning($"Animation '{animName}' not found in the Animator controller!");
         }
     }
+    
     void ConfigureAgent()
     {
         if (agent == null) return;
@@ -151,6 +188,7 @@ public class FinalBossController : MonoBehaviour
         agent.isStopped = false;
         agent.ResetPath();
     }
+    
     void SetupHealthBar()
     {
         // Create health bar if prefab is assigned
@@ -183,17 +221,34 @@ public class FinalBossController : MonoBehaviour
 
         float distance = Vector3.Distance(transform.position, player.position);
 
-        // Phase 2 transition check
+        // Phase transitions check
         if (!isPhaseTwo && health <= phase2HealthThreshold)
         {
             TransitionToPhaseTwo();
         }
+        else if (!isPhaseThree && health <= phase3HealthThreshold)
+        {
+            TransitionToPhaseThree();
+        }
 
-        // Teleportation check (phase 2 only)
-        if (isPhaseTwo && enableTeleportation && Time.time >= nextTeleportTime)
+        // Teleportation check (phase 2 and 3 only)
+        if ((isPhaseTwo || isPhaseThree) && enableTeleportation && Time.time >= nextTeleportTime)
         {
             TeleportBoss();
             return; // Skip rest of update to let teleport complete
+        }
+        
+        // Shockwave attack check (phase 2 and 3 only)
+        if ((isPhaseTwo || isPhaseThree) && Time.time >= nextShockwaveTime && distance <= chaseRange)
+        {
+            PerformShockwaveAttack();
+            return;
+        }
+        
+        // Healing pulse check (phase 3 only)
+        if (isPhaseThree && Time.time >= nextHealingPulseTime)
+        {
+            PerformHealingPulse();
         }
 
         // Main behavior logic
@@ -252,10 +307,57 @@ public class FinalBossController : MonoBehaviour
         
         Debug.Log("Boss entering Phase 2! Damage increased to " + currentDamage);
         
+        // Trigger shockwave to mark phase transition
+        PerformShockwaveAttack();
+        
         // Activate teleport system in phase 2
         if (enableTeleportation)
         {
             nextTeleportTime = Time.time + teleportCooldown * 0.5f; // First teleport happens sooner
+        }
+    }
+    
+    void TransitionToPhaseThree()
+    {
+        if (!isSecondPhaseTransition) return;
+        
+        isPhaseThree = true;
+        isSecondPhaseTransition = false;
+        
+        // Play rage animation for phase transition
+        PlayAnimation(rageState);
+        
+        // Increase damage and speed for phase 3
+        currentDamage = phase1Damage * phase3DamageMultiplier;
+        agent.speed *= phase3SpeedMultiplier / phase2SpeedMultiplier; // Adjust from phase 2
+        runSpeed *= phase3SpeedMultiplier / phase2SpeedMultiplier;
+        strafeSpeed *= phase3SpeedMultiplier / phase2SpeedMultiplier;
+        walkSpeed *= phase3SpeedMultiplier / phase2SpeedMultiplier;
+        
+        // Apply color change effect if renderer exists
+        if (bossMaterial != null)
+        {
+            StartCoroutine(PulseColor(phase2Color, phase3Color, 2.0f));
+        }
+        
+        // Change health bar color to indicate phase 3
+        if (healthBar != null && healthBar.fill != null)
+        {
+            // This will use the gradient colors based on current health percentage
+            healthBar.SetHealth(health);
+        }
+        
+        Debug.Log("Boss entering Phase 3! Damage increased to " + currentDamage);
+        
+        // Perform an immediate shockwave and healing pulse to mark phase transition
+        PerformShockwaveAttack();
+        PerformHealingPulse();
+        
+        // Make teleportation more frequent
+        if (enableTeleportation)
+        {
+            teleportCooldown *= 0.7f;
+            nextTeleportTime = Time.time + teleportCooldown * 0.3f; // First teleport happens very soon
         }
     }
 
@@ -324,6 +426,197 @@ public class FinalBossController : MonoBehaviour
             Attack();
         }
     }
+    
+    void PerformShockwaveAttack()
+    {
+        // Reset the cooldown for next shockwave
+        nextShockwaveTime = Time.time + shockwaveCooldown;
+        
+        // Briefly stop to perform the shockwave
+        agent.isStopped = true;
+        
+        // Play an attack animation (could be modified to be a special animation)
+        PlayAnimation(attackStates[0]);
+        
+        // Spawn shockwave effect/prefab if assigned
+        if (shockwavePrefab != null)
+        {
+            GameObject shockwave = Instantiate(shockwavePrefab, transform.position, Quaternion.identity);
+            
+            // Scale up the shockwave to cover a wider area
+            float shockwaveRadius = 15f;
+            shockwave.transform.localScale = new Vector3(shockwaveRadius, 1f, shockwaveRadius);
+            
+            // Destroy the shockwave after a short time
+            Destroy(shockwave, 3f);
+        }
+        
+        // Apply damage to player if within shockwave range
+        float shockwaveRange = 12f;
+        if (Vector3.Distance(transform.position, player.position) <= shockwaveRange)
+        {
+            PlayerHealth playerHealth = player.GetComponent<PlayerHealth>();
+            if (playerHealth != null)
+            {
+                playerHealth.TakeDamage(shockwaveDamage);
+                Debug.Log($"Shockwave hit player for {shockwaveDamage} damage!");
+            }
+        }
+        
+        // Resume movement after a short delay
+        StartCoroutine(ResumeMovementAfterDelay(1.0f));
+        
+        Debug.Log("Boss performed shockwave attack!");
+    }
+    
+    void PerformHealingPulse()
+    {
+        // Reset the cooldown for next healing pulse
+        nextHealingPulseTime = Time.time + healingPulseInterval;
+        
+        // Don't heal if already at max health
+        if (health >= maxHealth) return;
+        
+        // Add health
+        health += healingAmount;
+        health = Mathf.Min(health, maxHealth);
+        
+        // Update health bar
+        if (healthBar != null)
+        {
+            healthBar.SetHealth(health);
+        }
+        
+        // Visual effect for healing
+        StartCoroutine(HealingPulseEffect());
+        
+        Debug.Log($"Boss healed for {healingAmount}. Current health: {health}");
+    }
+    
+    IEnumerator HealingPulseEffect()
+    {
+        // Store original color
+        Color targetColor = isPhaseThree ? phase3Color : (isPhaseTwo ? phase2Color : originalColor);
+        
+        // Flash green for healing effect
+        if (bossMaterial != null)
+        {
+            Color healColor = Color.green;
+            float duration = 1.0f;
+            float elapsed = 0f;
+            
+            // Flash to green
+            while (elapsed < duration * 0.5f)
+            {
+                elapsed += Time.deltaTime;
+                float t = elapsed / (duration * 0.5f);
+                bossMaterial.color = Color.Lerp(targetColor, healColor, t);
+                yield return null;
+            }
+            
+            // Flash back to original color
+            elapsed = 0f;
+            while (elapsed < duration * 0.5f)
+            {
+                elapsed += Time.deltaTime;
+                float t = elapsed / (duration * 0.5f);
+                bossMaterial.color = Color.Lerp(healColor, targetColor, t);
+                yield return null;
+            }
+        }
+    }
+    
+    IEnumerator ResumeMovementAfterDelay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        if (agent != null) agent.isStopped = false;
+    }
+    
+    // Check for incoming bullets to dodge
+    IEnumerator CheckForBullets()
+    {
+        while (!isDead)
+        {
+            // Only check for bullets if dodge is off cooldown
+            if (Time.time >= nextDodgeTime)
+            {
+                float dodgeChance = isPhaseThree ? phase3DodgeChance : (isPhaseTwo ? phase2DodgeChance : bulletDodgeChance);
+                
+                // Check if we roll for a dodge attempt
+                if (Random.value < dodgeChance)
+                {
+                    // Look for bullets in detection radius
+                    Collider[] bullets = Physics.OverlapSphere(transform.position, bulletDetectionRadius, bulletLayer);
+                    if (bullets.Length > 0)
+                    {
+                        // Found bullets - dodge them!
+                        DodgeBullet(bullets[0].transform.position);
+                    }
+                }
+            }
+            
+            // Wait a short time before checking again
+            yield return new WaitForSeconds(0.1f);
+        }
+    }
+    
+    void DodgeBullet(Vector3 bulletPosition)
+    {
+        // Set dodge cooldown
+        nextDodgeTime = Time.time + dodgeCooldown;
+        
+        // Calculate dodge direction - perpendicular to bullet direction
+        Vector3 bulletDirection = (bulletPosition - transform.position).normalized;
+        Vector3 dodgeDirection;
+        
+        // 50/50 chance to dodge left or right
+        if (Random.value < 0.5f)
+        {
+            dodgeDirection = Vector3.Cross(bulletDirection, Vector3.up);
+        }
+        else
+        {
+            dodgeDirection = Vector3.Cross(Vector3.up, bulletDirection);
+        }
+        
+        // Calculate dodge position
+        Vector3 dodgePosition = transform.position + dodgeDirection * dodgeDistance;
+        
+        // Ensure the dodge position is on the NavMesh
+        NavMeshHit hit;
+        if (NavMesh.SamplePosition(dodgePosition, out hit, dodgeDistance, NavMesh.AllAreas))
+        {
+            dodgePosition = hit.position;
+        }
+        else
+        {
+            // If not on NavMesh, try the opposite direction
+            dodgePosition = transform.position - dodgeDirection * dodgeDistance;
+            if (NavMesh.SamplePosition(dodgePosition, out hit, dodgeDistance, NavMesh.AllAreas))
+            {
+                dodgePosition = hit.position;
+            }
+            else
+            {
+                // If still not on NavMesh, abort dodge
+                return;
+            }
+        }
+        
+        // Spawn dodge effect if assigned
+        if (dodgeEffectPrefab != null)
+        {
+            Instantiate(dodgeEffectPrefab, transform.position, Quaternion.identity);
+        }
+        
+        // Teleport to dodge position
+        transform.position = dodgePosition;
+        
+        // Look at player after dodging
+        transform.LookAt(new Vector3(player.position.x, transform.position.y, player.position.z));
+        
+        Debug.Log("Boss dodged a bullet!");
+    }
 
     void ChangeMovementPattern()
     {
@@ -338,9 +631,9 @@ public class FinalBossController : MonoBehaviour
             // 50% chance for left or right strafe if we choose to strafe
             currentMovementPattern = (Random.value < 0.5f) ? 1 : 2;
         }
-        else if (roll < strafeChance + 0.1f && isPhaseTwo)
+        else if (roll < strafeChance + 0.15f && (isPhaseTwo || isPhaseThree))
         {
-            // Small chance to back up if in phase 2
+            // Increased chance to back up in later phases
             currentMovementPattern = 3;
         }
         else
@@ -413,7 +706,10 @@ public class FinalBossController : MonoBehaviour
     {
         if (Time.time < nextAttackTime || IsPlayingImportantAnimation()) return;
 
-        nextAttackTime = Time.time + (isPhaseTwo ? attackCooldown * 0.7f : attackCooldown); // Faster attacks in phase 2
+        // Faster attacks in later phases
+        float phaseCooldownMultiplier = isPhaseThree ? 0.5f : (isPhaseTwo ? 0.7f : 1.0f);
+        nextAttackTime = Time.time + (attackCooldown * phaseCooldownMultiplier);
+        
         agent.ResetPath();
         transform.LookAt(player);
 
@@ -444,6 +740,32 @@ public class FinalBossController : MonoBehaviour
     public void TakeDamage(float amount)
     {
         if (isDead) return;
+        
+        // Check for bullet dodge
+        float dodgeChance = isPhaseThree ? phase3DodgeChance : (isPhaseTwo ? phase2DodgeChance : bulletDodgeChance);
+        if (Random.value < dodgeChance && Time.time >= nextDodgeTime)
+        {
+            // Successfully dodged!
+            nextDodgeTime = Time.time + dodgeCooldown;
+            
+            // Show dodge effect
+            if (dodgeEffectPrefab != null)
+            {
+                Instantiate(dodgeEffectPrefab, transform.position, Quaternion.identity);
+            }
+            
+            Debug.Log("Boss dodged an attack!");
+            return;
+        }
+        
+        // Check for bullet reflection in phase 2 and 3
+        if (phase2BulletReflection && isPhaseTwo && Random.value < reflectionChance)
+        {
+            // Reflect bullet back at player
+            ReflectBullet();
+            Debug.Log("Boss reflected bullet back at player!");
+            return;
+        }
 
         health -= amount;
         
@@ -459,8 +781,8 @@ public class FinalBossController : MonoBehaviour
             return;
         }
         
-        // In phase 2, boss has a chance to teleport when hit
-        if (isPhaseTwo && enableTeleportation && Random.value < 0.3f && Time.time >= nextTeleportTime)
+        // In phase 2 or 3, boss has a chance to teleport when hit
+        if ((isPhaseTwo || isPhaseThree) && enableTeleportation && Random.value < 0.4f && Time.time >= nextTeleportTime)
         {
             // Reset teleport cooldown to allow emergency teleport
             nextTeleportTime = 0f;
@@ -471,6 +793,22 @@ public class FinalBossController : MonoBehaviour
             // Play a random hit animation
             string hitAnim = GetRandomHitAnimation();
             PlayAnimation(hitAnim);
+        }
+    }
+    
+    void ReflectBullet()
+    {
+        // This would ideally spawn a projectile going toward the player
+        // For now, we'll just apply some damage to the player
+        if (player != null)
+        {
+            PlayerHealth ph = player.GetComponent<PlayerHealth>();
+            if (ph != null)
+            {
+                float reflectDamage = 15f;
+                ph.TakeDamage(reflectDamage);
+                Debug.Log($"Boss reflected {reflectDamage} damage to player");
+            }
         }
     }
 
@@ -555,7 +893,7 @@ public class FinalBossController : MonoBehaviour
         return false;
     }
 
-    // Color pulsing effect for phase 2
+    // Color pulsing effect for phase 2 and 3
     IEnumerator PulseColor(Color startColor, Color targetColor, float duration)
     {
         float elapsed = 0f;
@@ -570,7 +908,7 @@ public class FinalBossController : MonoBehaviour
         }
         
         // Ongoing subtle pulsing
-        float pulseMagnitude = 0.2f;
+        float pulseMagnitude = 0.3f; // Increased from 0.2f
         while (true)
         {
             // Pulse between target color and slightly darker
