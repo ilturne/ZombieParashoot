@@ -1,75 +1,99 @@
 using UnityEngine;
 
+public interface IDamageable
+{
+    void TakeDamage(float amount);
+}
+
+[RequireComponent(typeof(Rigidbody), typeof(Collider))]
+
 public class Bullet : MonoBehaviour
 {
-    [Header("Bullet Settings")]
-    public float damage = 20f;          // Damage dealt to enemies
-    public float speed = 30f;           // Speed of the bullet
-    public float lifetime = 3f;         // How long the bullet lives before being destroyed
-    
-    [Header("Visual Effects")]
-    public GameObject hitEffect;        // Optional hit effect prefab
-    
-    private Rigidbody rb;
-    
-    void Start()
+    public float speed = 30f;
+    public float damage = 20f;
+    public float lifeTime = 3f;
+    public GameObject hitEffect;
+    public LayerMask hitLayers;
+
+    Rigidbody rb;
+    Vector3 lastPos;
+
+    void Awake()
     {
-        // Get rigidbody
         rb = GetComponent<Rigidbody>();
-        if (rb == null)
-        {
-            rb = gameObject.AddComponent<Rigidbody>();
-        }
-        
-        // Configure rigidbody
-        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         rb.useGravity = false;
-        
-        // Set initial velocity
-        rb.linearVelocity = transform.forward * speed;
-        
-        // Destroy after lifetime
-        Destroy(gameObject, lifetime);
+        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
     }
-    
-    void OnCollisionEnter(Collision collision)
+
+    void OnEnable()
     {
-        // Check if we hit a zombie
-        if (collision.gameObject.CompareTag("Zombie"))
+        rb.linearVelocity = transform.forward * speed;
+        lastPos = transform.position;
+        Invoke(nameof(DestroySelf), lifeTime);
+    }
+
+    void Update()
+    {
+        Vector3 travel = transform.position - lastPos;
+        float dist = travel.magnitude;
+        if (dist > 0f && Physics.Raycast(lastPos, travel.normalized, out var hit, dist, hitLayers))
         {
-            // Try to deal damage to the zombie
-            ZombieAi zombieAi = collision.gameObject.GetComponent<ZombieAi>();
-            if (zombieAi != null)
+            HandleHit(hit.collider, hit.point, hit.normal);
+            return;
+        }
+        lastPos = transform.position;
+    }
+
+    void OnCollisionEnter(Collision col)
+    {
+        var contact = col.contacts[0];
+        HandleHit(col.collider, contact.point, contact.normal);
+    }
+
+    void HandleHit(Collider col, Vector3 pos, Vector3 norm)
+    {
+        // Zombie case
+        if (col.CompareTag("Zombie"))
+        {
+            var zh = col.GetComponent<ZombieHealth>();
+            if (zh != null)
             {
-                zombieAi.TakeDamage(damage);
-            }
-            
-            // Try ZombieHealth component as well
-            ZombieHealth zombieHealth = collision.gameObject.GetComponent<ZombieHealth>();
-            if (zombieHealth != null)
-            {
-                zombieHealth.TakeDamage(damage);
+                // InstaKill?
+                var pm = GameObject.FindWithTag("Player")?.GetComponent<ThirdPersonMovement>();
+                if (pm != null && pm.IsInstaKillActive)
+                    zh.InstaKill();
+                else
+                    zh.TakeDamage(damage);
             }
         }
-        // NEW: Check if we hit the final boss
-        else if (collision.gameObject.CompareTag("Boss") || collision.gameObject.GetComponent<FinalBossController>() != null)
+        // Boss case
+        else if (col.CompareTag("Boss"))
         {
-            // Try to deal damage to the boss
-            FinalBossController bossController = collision.gameObject.GetComponent<FinalBossController>();
-            if (bossController != null)
+            var boss = col.GetComponent<FinalBossController>();
+            if (boss != null)
             {
-                bossController.TakeDamage(damage);
-                Debug.Log($"Hit boss with bullet for {damage} damage!");
+                var pm = GameObject.FindWithTag("Player")?.GetComponent<ThirdPersonMovement>();
+                float dmg = (pm != null && pm.IsInstaKillActive) ? damage * 5f : damage;
+                boss.TakeDamage(dmg);
             }
         }
-        
-        // Spawn hit effect if assigned
+        // Other IDamageable (falls back):
+        else
+        {
+            var dmgable = col.GetComponentInParent<IDamageable>();
+            if (dmgable != null)
+                dmgable.TakeDamage(damage);
+        }
+
         if (hitEffect != null)
-        {
-            Instantiate(hitEffect, transform.position, Quaternion.identity);
-        }
-        
-        // Destroy bullet on impact
+            Instantiate(hitEffect, pos, Quaternion.LookRotation(norm));
+
+        DestroySelf();
+    }
+
+    void DestroySelf()
+    {
+        CancelInvoke();
         Destroy(gameObject);
     }
 }

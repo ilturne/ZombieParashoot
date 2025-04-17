@@ -1,122 +1,91 @@
 using UnityEngine;
+using UnityEngine.AI;
+using System.Collections;
 
 public class FinalBossTriggerAndSpawner : MonoBehaviour
 {
     [Header("Boss Setup")]
     public GameObject bossPrefab;
-
-    [Header("Spawn Settings")]
+    [Tooltip("Distance ahead of the player to spawn the boss")]
     public float distanceInFrontOfPlayer = 6f;
 
     [Header("Camera Settings")]
-    [Tooltip("Whether to adjust the camera when entering boss area")]
     public bool adjustCamera = true;
 
-    private GameObject bossInstance;
     private bool triggered = false;
     private Camera mainCamera;
     private CameraRoll cameraRoll;
 
-    private void Start()
+    void Start()
     {
-        // Find camera references
         mainCamera = Camera.main;
         if (mainCamera != null)
-        {
             cameraRoll = mainCamera.GetComponent<CameraRoll>();
-        }
     }
 
-    private void OnTriggerEnter(Collider other)
+    void OnTriggerEnter(Collider other)
     {
         if (triggered || !other.CompareTag("Player")) return;
         triggered = true;
 
-        // Spawn the boss
-        SpawnBossInFrontOfPlayer(other.transform);
+        SpawnBoss(other.transform);
+        if (adjustCamera) AdjustCameraForBossFight(other.gameObject);
+        StopAllZombieSpawners();
 
-        // Adjust camera for boss fight
-        if (adjustCamera)
-        {
-            AdjustCameraForBossFight(other.gameObject);
-        }
-
-        // Stop zombie spawning explicitly
-        StopZombieSpawning();
-
-        // Don't destroy the trigger object as we might need it for boss arena boundaries
-        // Instead, just disable the trigger component
-        Collider triggerCollider = GetComponent<Collider>();
-        if (triggerCollider != null)
-        {
-            triggerCollider.enabled = false;
-        }
+        // disable this trigger so it never fires again
+        var col = GetComponent<Collider>();
+        if (col != null) col.enabled = false;
     }
 
-    private void SpawnBossInFrontOfPlayer(Transform player)
+    private void SpawnBoss(Transform player)
     {
         if (bossPrefab == null)
         {
-            Debug.LogError("FinalBossTrigger: No bossPrefab assigned.");
+            Debug.LogError("FinalBossTrigger: bossPrefab not assigned!");
             return;
         }
 
-        if (bossInstance != null) return;
-
+        // base position in front of player
         Vector3 spawnPos = player.position + player.forward * distanceInFrontOfPlayer;
 
-        // Raycast to snap to ground
-        if (Physics.Raycast(spawnPos + Vector3.up * 5f, Vector3.down, out RaycastHit hit, 10f))
-        {
-            spawnPos = hit.point;
-        }
-        else
-        {
-            spawnPos.y = player.position.y; // Fallback if no ground detected
-        }
+        // snap to NavMesh so boss stands on walkable ground
+        if (NavMesh.SamplePosition(spawnPos, out NavMeshHit hit, 10f, NavMesh.AllAreas))
+            spawnPos = hit.position;
 
-        bossInstance = Instantiate(bossPrefab, spawnPos, Quaternion.identity);
-        Debug.Log("Final Boss spawned at: " + spawnPos);
-        
-        // Make sure the boss has the Boss tag
-        bossInstance.tag = "Boss";
+        var boss = Instantiate(bossPrefab, spawnPos, Quaternion.identity);
+        boss.tag = "Boss";
+        Debug.Log($"Final Boss spawned at {spawnPos}");
     }
-    
+
     private void AdjustCameraForBossFight(GameObject player)
     {
-        if (mainCamera == null) return;
-        
-        // Since ThirdPersonMovement is on the player, we need to find it
-        ThirdPersonMovement playerMovement = player.GetComponent<ThirdPersonMovement>();
-        
-        if (playerMovement != null)
+        var mover = player.GetComponent<ThirdPersonMovement>();
+        if (mover != null)
         {
-            // Call the method to enter boss mode
-            playerMovement.SetBossAreaMode(true);
-            Debug.Log("Set player to boss area mode");
+            mover.SetBossAreaMode(true);
+            Debug.Log("Player movement set to boss‐area mode");
+        }
+        else if (cameraRoll != null)
+        {
+            cameraRoll.enabled = false;
+            Debug.Log("CameraRoll disabled for boss fight");
         }
         else
         {
-            Debug.LogWarning("Could not find ThirdPersonMovement on player.");
-            
-            // Fallback: Still disable camera roll even if we can't find player movement
-            if (cameraRoll != null)
-            {
-                cameraRoll.enabled = false;
-                Debug.Log("Camera roll disabled for boss fight");
-            }
+            Debug.LogWarning("No ThirdPersonMovement or CameraRoll found; camera unchanged.");
         }
     }
-    
-   private void StopZombieSpawning()
+
+    private void StopAllZombieSpawners()
     {
-        // Find zombie spawner and disable it
-        ZombieSpawner[] spawners = FindObjectsByType<ZombieSpawner>(FindObjectsSortMode.None);
-        foreach (ZombieSpawner spawner in spawners)
+        // use the fast, no‑sort overload
+        var spawners = FindObjectsByType<ZombieSpawner>(FindObjectsSortMode.None);
+        foreach (var sp in spawners)
         {
-            // This relies on the isInBossArea field we added to ZombieSpawner
-            spawner.isInBossArea = true;
-            Debug.Log("Set ZombieSpawner.isInBossArea to true");
+            sp.enabled = false;
+            sp.StopAllCoroutines();
+            Debug.Log($"ZombieSpawner '{sp.name}' paused.");
         }
     }
+
 }

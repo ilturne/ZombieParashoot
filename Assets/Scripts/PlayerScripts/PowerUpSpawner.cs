@@ -11,7 +11,6 @@ public class PowerUpSpawner : MonoBehaviour
     [SerializeField] private float spawnInterval = 10f; // Time between spawn attempts
     [SerializeField] private float spawnYLevel = 1.0f; // Fixed Y position for power-ups
     [SerializeField] private Vector2 worldBoundsX = new Vector2(2f, 18f); // Min/Max X
-    [SerializeField] private Vector2 worldBoundsZ = new Vector2(0f, 500f); // Min/Max Z
 
     [Header("Proximity & View Settings")]
     [SerializeField] private float maxSpawnRadiusFromPlayer = 50f; // How far out from the player to consider spawning
@@ -82,7 +81,6 @@ public class PowerUpSpawner : MonoBehaviour
 
             // 2. Clamp to world bounds and set Y level
             potentialSpawnPos.x = Mathf.Clamp(potentialSpawnPos.x, worldBoundsX.x, worldBoundsX.y);
-            potentialSpawnPos.z = Mathf.Clamp(potentialSpawnPos.z, worldBoundsZ.x, worldBoundsZ.y);
             potentialSpawnPos.y = spawnYLevel;
 
             // 3. Check Camera View: Is the point outside the camera frustum?
@@ -116,8 +114,5 @@ public class PowerUpSpawner : MonoBehaviour
             }
             // If checks fail, the loop continues to try another random point
         }
-
-        // Optional: Log if no suitable spot was found after max attempts
-        // Debug.LogWarning("PowerUpSpawner: Could not find a valid 'in front' spawn location outside camera view after " + maxSpawnAttemptsPerInterval + " attempts.");
     }
 }

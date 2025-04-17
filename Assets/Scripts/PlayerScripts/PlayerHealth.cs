@@ -3,41 +3,50 @@ using UnityEngine;
 public class PlayerHealth : MonoBehaviour
 {
     [Header("Health Settings")]
-    [SerializeField] private float baseMaxHealth = 100f; // The initial, default maximum health
-    [SerializeField] private float maxHealth;           // The current maximum health (can be increased by shield)
-    [SerializeField] private float currentHealth;       // Player's current HP
+    [SerializeField] private float baseMaxHealth = 100f; 
+    [SerializeField] private float maxHealth = 100f; // Default to baseMaxHealth
+    [SerializeField] private float currentHealth; 
 
-    // UI Components
     [Header("UI")]
-    [SerializeField] private HealthBar healthBar;  // Reference to the health bar
-    [SerializeField] private GameObject healthBarPrefab; // Prefab to instantiate if healthBar not assigned
+    [SerializeField] private HealthBar healthBar; 
+    [SerializeField] private GameObject healthBarPrefab;
 
-    // Optional: UI References (Assign these in the Inspector if you have them)
-    [Header("Other Components (Optional)")]
-    [SerializeField] private CameraRoll cameraRoll; 
-    [SerializeField] private ThirdPersonMovement playerMovement;
-    [SerializeField] private GameObject GameOverCanvas; // Reference to the Game Over UI canvas
-    private GameManager gameManager;
+    // References to disable on death (Assign in Inspector or get in Start)
+    [Header("Component References")]
+    [SerializeField] private ThirdPersonMovement movementScript;
+    [SerializeField] private WeaponManager weaponManagerScript; 
+    [SerializeField] private CameraRoll cameraRollScript; // Keep if you want to explicitly disable
+
+    // Event for death (GameManager listens to this)
     public System.Action OnPlayerDeath;
     
+    private bool isDead = false; 
+
     void Start()
     {
-        // Initialize health based on the base maximum
         maxHealth = baseMaxHealth;
-        currentHealth = baseMaxHealth; // Start full
+        currentHealth = baseMaxHealth;
+        isDead = false;
         
-        // Set up health bar if not already assigned
+        // --- Get component references if not assigned in Inspector ---
+        if (movementScript == null) movementScript = GetComponent<ThirdPersonMovement>();
+        // Assuming WeaponManager is on a child object like "WeaponHolder" 
+        if (weaponManagerScript == null) weaponManagerScript = GetComponentInChildren<WeaponManager>(); 
+        if (cameraRollScript == null) cameraRollScript = FindFirstObjectByType<CameraRoll>(); // Find camera if needed
+
+        // --- Null checks ---
+        if (movementScript == null) Debug.LogError("PlayerHealth: Movement Script reference missing!", this);
+        if (weaponManagerScript == null) Debug.LogError("PlayerHealth: Weapon Manager Script reference missing!", this);
+        if (cameraRollScript == null) Debug.LogWarning("PlayerHealth: Camera Roll Script reference missing (optional).", this);
+
+
+        // --- Health Bar Setup ---
         if (healthBar == null && healthBarPrefab != null)
         {
-            // Instantiate the health bar prefab above the player
             GameObject healthBarObj = Instantiate(healthBarPrefab, transform.position + Vector3.up * 2f, Quaternion.identity);
-            // Make it a child of the player
             healthBarObj.transform.SetParent(transform);
-            // Get the HealthBar component
             healthBar = healthBarObj.GetComponent<HealthBar>();
         }
-        
-        // Initialize the health bar
         if (healthBar != null)
         {
             healthBar.SetMaxHealth(maxHealth);
@@ -49,13 +58,11 @@ public class PlayerHealth : MonoBehaviour
 
     public void TakeDamage(float damageAmount)
     {
-        if (currentHealth <= 0) return; // Already dead
+        if (isDead) return; 
 
         currentHealth -= damageAmount;
-        // Clamp health between 0 and the CURRENT maximum health
         currentHealth = Mathf.Clamp(currentHealth, 0f, maxHealth);
 
-        // Update health bar
         if (healthBar != null)
         {
             healthBar.SetHealth(currentHealth);
@@ -69,72 +76,57 @@ public class PlayerHealth : MonoBehaviour
         }
     }
 
-    // Use this for the "Health" power-up - Heals up to the BASE max (e.g., 100)
-    public void HealUpToBaseMax(float healAmount)
-    {
-        if (currentHealth <= 0) return; // Cannot heal if dead
-        // Don't heal if already at or above the original base max health
+    // Heal / Shield methods (simplified for brevity, ensure your versions are kept if different)
+    public void HealUpToBaseMax(float healAmount) { /* Your existing logic */ 
+        if (isDead) return;
         if (currentHealth >= baseMaxHealth) return;
-
         currentHealth += healAmount;
-        // Clamp first to the base max, then ensure it doesn't exceed the current absolute max (safety check)
         currentHealth = Mathf.Clamp(currentHealth, 0f, baseMaxHealth);
         currentHealth = Mathf.Clamp(currentHealth, 0f, maxHealth);
-
-        // Update health bar
-        if (healthBar != null)
-        {
-            healthBar.SetHealth(currentHealth);
-        }
-
-        Debug.Log($"Player healed {healAmount} (capped at base max {baseMaxHealth}). Current health: {currentHealth}/{maxHealth}");
+         if (healthBar != null) healthBar.SetHealth(currentHealth);
+        Debug.Log($"Player healed {healAmount}. Current health: {currentHealth}/{maxHealth}");
     }
-
-    // Use this for the "Shield" power-up - Increases MAX and CURRENT health
-    public void IncreaseMaxHealthAndHeal(float amountToAdd)
-    {
-        if (currentHealth <= 0) return; // Cannot apply if dead
-        
-        maxHealth += amountToAdd; // Increase max health
-        currentHealth += amountToAdd; // Add health points
-        currentHealth = Mathf.Clamp(currentHealth, 0f, maxHealth);
-
-        // Update health bar max and current values
-        if (healthBar != null)
-        {
+    public void IncreaseMaxHealthAndHeal(float amountToAdd) { /* Your existing logic */
+        if (isDead) return; 
+        maxHealth += amountToAdd;
+        currentHealth += amountToAdd; 
+        currentHealth = Mathf.Clamp(currentHealth, 0f, maxHealth); 
+        if (healthBar != null) {
             healthBar.SetMaxHealth(maxHealth);
             healthBar.SetHealth(currentHealth);
         }
-
-        Debug.Log($"Player SHIELD increased max health by {amountToAdd} to {maxHealth}. Current health: {currentHealth}/{maxHealth}");
+        Debug.Log($"Player SHIELD increased max health. Current health: {currentHealth}/{maxHealth}");
     }
-
 
     // --- Getters ---
     public float GetCurrentHealth() { return currentHealth; }
     public float GetMaxHealth() { return maxHealth; }
     public float GetBaseMaxHealth() { return baseMaxHealth; }
 
-
-    // --- Helper methods ---
+    // --- Die method - disables components and invokes event ---
     private void Die()
     {
-        Debug.Log("Player has died!");
-        // TODO: Implement actual death logic
-        OnPlayerDeath?.Invoke();
-        // gameObject.SetActive(false); // Example
-        if (cameraRoll != null)
+        if (isDead) return;
+        isDead = true;
+
+        Debug.Log("PlayerHealth.Die() called. Disabling components & Invoking OnPlayerDeath event...");
+
+        // --- Disable Player Control ---
+        if (movementScript != null)
         {
-            cameraRoll.enabled = false; // Disable camera roll on death
+            movementScript.enabled = false; 
         }
-        if (playerMovement != null)
+        if (weaponManagerScript != null)
         {
-            playerMovement.enabled = false; // Disable player movement on death
+             weaponManagerScript.enabled = false; // Disable weapon switching/firing logic
         }
-        if (gameManager != null)
+        if (cameraRollScript != null)
         {
-            GameOverCanvas.SetActive(true); // Show Game Over UI
-            gameManager.PlayerDied();
+            cameraRollScript.enabled = false; // Explicitly disable camera if needed
         }
+        
+        // --- Invoke the death event ---
+        // The GameManager will listen for this event.
+        OnPlayerDeath?.Invoke(); 
     }
 }

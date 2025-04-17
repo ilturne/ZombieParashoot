@@ -7,8 +7,11 @@ public class GameManager : MonoBehaviour
     [Tooltip("Assign the parent Panel GameObject for the Game Over UI")]
     [SerializeField] private GameObject gameOverPanel; // Assign in Inspector
 
-    void Awake()
+    private PlayerHealth playerHealth; // Store reference to unsubscribe later
+
+    void Start() // Using Start to increase chance PlayerHealth.Start runs first
     {
+        // Ensure the panel is hidden at the start
         if (gameOverPanel != null)
         {
             gameOverPanel.SetActive(false);
@@ -17,15 +20,40 @@ public class GameManager : MonoBehaviour
         {
             Debug.LogError("Game Over Panel is not assigned in the GameManager Inspector!", this);
         }
+
+        // --- Find Player and Subscribe to Death Event ---
+        GameObject playerObj = GameObject.FindGameObjectWithTag("Player"); // Make sure player is tagged "Player"
+        if (playerObj != null)
+        {
+            playerHealth = playerObj.GetComponent<PlayerHealth>();
+            if (playerHealth != null)
+            {
+                // Subscribe the HandlePlayerDeath function to the player's death event
+                playerHealth.OnPlayerDeath += HandlePlayerDeath; 
+                Debug.Log("GameManager subscribed to Player OnPlayerDeath event.");
+            }
+            else
+            {
+                Debug.LogError("GameManager found Player object but couldn't find PlayerHealth component!", this);
+            }
+        }
+        else
+        {
+            Debug.LogError("GameManager could not find object tagged 'Player' to get PlayerHealth!", this);
+        }
+        // --- End Subscription ---
+
+        // Initial game state setup 
+        Time.timeScale = 1f; 
     }
 
-    // Called by PlayerHealth when the player dies
-    public void PlayerDied()
+    // This method is called when the PlayerHealth.OnPlayerDeath event is invoked
+    private void HandlePlayerDeath() 
     {
-        Debug.Log("GameManager received PlayerDied signal.");
+        Debug.Log("HandlePlayerDeath() EXECUTED in GameManager."); 
 
         // Pause the game
-        Time.timeScale = 0f; // Stops time-based operations
+        Time.timeScale = 0f; 
 
         // Show the mouse cursor
         Cursor.lockState = CursorLockMode.None;
@@ -34,34 +62,42 @@ public class GameManager : MonoBehaviour
         // Activate the Game Over UI Panel
         if (gameOverPanel != null)
         {
-            gameOverPanel.SetActive(true);
+            Debug.Log($"Attempting to activate GameOverPanel: {gameOverPanel.name}"); 
+            gameOverPanel.SetActive(true); // GameManager activates the UI
+        }
+        else
+        {
+             Debug.LogError("Cannot activate GameOverPanel because reference is null!");
         }
     }
 
-    // This function will be called by the UI Restart Button's OnClick event
+    // Called by the UI Restart Button's OnClick event
     public void RestartGame()
     {
         Debug.Log("RestartGame called.");
-
-        // Unpause the game
         Time.timeScale = 1f;
-
-        // Hide and lock cursor again (adjust if your game doesn't lock cursor)
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
-
-        // Get the current active scene
         Scene currentScene = SceneManager.GetActiveScene();
+        Debug.Log($"Reloading scene: {currentScene.name} (Build Index: {currentScene.buildIndex})");
+        gameOverPanel.SetActive(false);
+        SceneManager.LoadScene("CombinedWorld", LoadSceneMode.Single); // Reload the current scene
 
-        // Reload the current scene
-        SceneManager.LoadScene(currentScene.buildIndex); 
-        // Using buildIndex is generally safer than name if you rename scenes
     }
 
-     // Optional: Add Quit function for a Quit button
+    // Optional: Quit function
      public void QuitGame()
      {
          Debug.Log("Quitting Game...");
-         Application.Quit(); // Note: This only works in a built game, not the Editor
+         Application.Quit();
      }
+
+    // --- Unsubscribe when GameManager is destroyed ---
+    void OnDestroy()
+    {
+        if (playerHealth != null) 
+        {
+            playerHealth.OnPlayerDeath -= HandlePlayerDeath; // Unsubscribe
+            Debug.Log("GameManager unsubscribed from Player OnPlayerDeath event.");
+        }
+    }
+    // --- End Unsubscribe ---
 }

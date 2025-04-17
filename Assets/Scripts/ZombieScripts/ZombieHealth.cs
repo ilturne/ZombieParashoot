@@ -149,7 +149,7 @@ public class ZombieHealth : MonoBehaviour
         // Play damage flash effect
         PlayDamageFlash();
         
-        Debug.Log($"{gameObject.name} took {damageAmount} damage. Health: {currentHealth}/{maxHealth}");
+        //Debug.Log($"{gameObject.name} took {damageAmount} damage. Health: {currentHealth}/{maxHealth}");
         
         if (currentHealth <= 0)
         {

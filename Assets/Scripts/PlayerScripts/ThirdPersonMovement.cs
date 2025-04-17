@@ -82,7 +82,7 @@ public class ThirdPersonMovement : MonoBehaviour
         HandleMovement();
         HandleBombThrowInput(); 
         HandleMouseRotation();
-        
+        // Add this inside the Update() method of a suitable script        
         // Only update camera position if in boss area
         if (inBossArea && mainCamera != null)
         {
