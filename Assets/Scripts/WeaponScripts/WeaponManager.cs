@@ -7,9 +7,10 @@ public class WeaponManager : MonoBehaviour
     public List<GameObject> weapons; 
 
     // *** NEW: Assign the single PlayerFirePoint GameObject here ***
+    public int[] killThresholds = new int[] { 0, 12, 25, 35 }; 
+    private int currentWeaponIndex = 0;
     public Transform playerFirePoint; 
 
-    private int currentWeaponIndex = 0;
 
     void Start()
     {
@@ -19,72 +20,39 @@ public class WeaponManager : MonoBehaviour
              // Consider disabling the component or handling this error appropriately
         }
         SelectWeapon(currentWeaponIndex); 
+        SelectWeapon(0);
     }
 
     void Update()
     {
-        // Don't allow switching if the list is empty or not set up
         if (weapons == null || weapons.Count == 0) return;
 
-        int previousWeaponIndex = currentWeaponIndex;
+        // 1) determine max unlocked index
+        int kills = GameManager.Instance?.KillCount ?? 0;
+        int maxUnlocked = 0;
+        for (int i = 1; i < killThresholds.Length && i < weapons.Count; i++)
+            if (kills >= killThresholds[i])
+                maxUnlocked = i;
 
-        // Detect scroll wheel input
+        int prev = currentWeaponIndex;
         float scroll = Input.GetAxis("Mouse ScrollWheel");
+        if (scroll > 0f) currentWeaponIndex--;
+        else if (scroll < 0f) currentWeaponIndex++;
 
-        if (scroll > 0f) // Scrolled Up
-        {
-            currentWeaponIndex--;
-            if (currentWeaponIndex < 0)
-            {
-                currentWeaponIndex = weapons.Count - 1; // Wrap around to the last weapon
-            }
-        }
-        else if (scroll < 0f) // Scrolled Down
-        {
-            currentWeaponIndex++;
-            if (currentWeaponIndex >= weapons.Count)
-            {
-                currentWeaponIndex = 0; // Wrap around to the first weapon
-            }
-        }
+        // 2) wrap & clamp within [0..maxUnlocked]
+        if (currentWeaponIndex < 0) currentWeaponIndex = maxUnlocked;
+        if (currentWeaponIndex > maxUnlocked) currentWeaponIndex = 0;
 
-        // Only switch if the index actually changed
-        if (previousWeaponIndex != currentWeaponIndex)
-        {
+        if (prev != currentWeaponIndex)
             SelectWeapon(currentWeaponIndex);
-        }
     }
 
     void SelectWeapon(int index)
     {
-        // Basic validation
-        if (weapons == null || weapons.Count == 0) return; 
-        if (index < 0 || index >= weapons.Count)
-        {
-             Debug.LogError("Invalid weapon index selected: " + index, this);
-             index = 0; // Default to first weapon
-        }
-
-        // Loop through all weapons and activate/deactivate them
         for (int i = 0; i < weapons.Count; i++)
-        {
-            // Check if the weapon reference is valid before trying to activate/deactivate
-            if (weapons[i] != null) 
-            {
-                 weapons[i].SetActive(i == index); 
-            }
-            else
-            {
-                Debug.LogWarning($"Weapon at index {i} is null in the WeaponManager list.", this);
-            }
-        }
+            if (weapons[i] != null)
+                weapons[i].SetActive(i == index);
 
-        currentWeaponIndex = index; 
-
-        // Optional: Log which weapon is active (check if reference is valid first)
-        if (weapons[currentWeaponIndex] != null)
-        {
-            // Debug.Log("Switched to weapon: " + weapons[currentWeaponIndex].name); 
-        }
+        currentWeaponIndex = index;
     }
 }

@@ -3,14 +3,37 @@ using UnityEngine.SceneManagement; // Required for scene management
 
 public class GameManager : MonoBehaviour
 {
+    public static GameManager Instance { get; private set; } // Singleton instance
     [Header("UI References")]
     [Tooltip("Assign the parent Panel GameObject for the Game Over UI")]
-    [SerializeField] private GameObject gameOverPanel; // Assign in Inspector
+    [SerializeField] private GameObject gameOverPanel; // Assign in Inspector\
 
+    [Header("Lives")]
+    [Tooltip("Number of lives the player has")]
+    [SerializeField] private int maxLives = 3; 
+    private int currentLives; // Track current lives
     private PlayerHealth playerHealth; // Store reference to unsubscribe later
+
+    public int KillCount {get; private set; } // Track number of kills
+
+    void Awake()
+    {
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject); // Destroy duplicate GameManager
+            return;
+        }
+        else 
+        {
+            Instance = this; // Set the singleton instance
+            DontDestroyOnLoad(gameObject); // Persist across scenes
+        }
+    }
 
     void Start() // Using Start to increase chance PlayerHealth.Start runs first
     {
+        currentLives = maxLives;
+        KillCount = 0;
         // Ensure the panel is hidden at the start
         if (gameOverPanel != null)
         {
@@ -45,6 +68,10 @@ public class GameManager : MonoBehaviour
 
         // Initial game state setup 
         Time.timeScale = 1f; 
+    }
+
+    public void RegisterKill() {
+        KillCount++; // Increment kill count
     }
 
     // This method is called when the PlayerHealth.OnPlayerDeath event is invoked

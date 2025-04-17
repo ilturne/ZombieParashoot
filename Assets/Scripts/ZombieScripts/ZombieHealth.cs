@@ -239,6 +239,11 @@ public class ZombieHealth : MonoBehaviour
             currentFlashRoutine = null;
         }
 
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.RegisterKill(); // Increment kill count
+        }
+
         // Disable collider to prevent further interaction
         Collider col = GetComponent<Collider>();
         if (col != null) col.enabled = false;

@@ -1,98 +1,100 @@
 using UnityEngine;
 
+[RequireComponent(typeof(Rigidbody), typeof(Collider))]
 public class Pellet : MonoBehaviour
 {
-    [Header("Pellet Settings")]
-    [SerializeField] private float damage = 10f;
-    [SerializeField] private float lifetime = 3.0f;
-    [SerializeField] private GameObject impactEffectPrefab; // Optional impact effect
+    [Header("Settings")]
+    public float speed = 30f;
+    public float damage = 10f;
+    public float lifetime = 3f;
+
+    [Header("Hit Effect")]
+    public GameObject impactEffectPrefab;
+
+    [Header("Collision Layers")]
+    public LayerMask hitLayers; // assign “Zombie” and “Boss” layers here
 
     private Rigidbody rb;
+    private Vector3 lastPosition;
 
-    void Awake() { rb = GetComponent<Rigidbody>(); }
-    void Start() { Destroy(gameObject, lifetime); }
-    
-    void OnCollisionEnter(Collision collision)
+    void Awake()
     {
-        HandleImpact(collision.gameObject, collision.contacts[0].point, collision.contacts[0].normal);
+        rb = GetComponent<Rigidbody>();
+        rb.useGravity = false;
+        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
     }
 
-    void HandleImpact(GameObject hitObject, Vector3 hitPoint, Vector3 hitNormal)
+    void OnEnable()
     {
-        // Check for zombie tag
-        if (hitObject.CompareTag("Zombie"))
+        // fire
+        rb.linearVelocity = transform.forward * speed;
+        lastPosition = transform.position;
+        Invoke(nameof(DestroySelf), lifetime);
+    }
+
+    void Update()
+    {
+        // continuous collision via raycast
+        Vector3 travel = transform.position - lastPosition;
+        float dist = travel.magnitude;
+        if (dist > 0f && Physics.Raycast(lastPosition, travel.normalized, out RaycastHit hit, dist, hitLayers))
         {
-            // Get the ZombieHealth component
-            ZombieHealth zombieHealth = hitObject.GetComponent<ZombieHealth>();
-            if (zombieHealth != null)
+            HandleHit(hit.collider, hit.point, hit.normal);
+            return;
+        }
+        lastPosition = transform.position;
+    }
+
+    void OnCollisionEnter(Collision col)
+    {
+        // fallback in case CCD misses
+        var contact = col.contacts[0];
+        HandleHit(col.collider, contact.point, contact.normal);
+    }
+
+    void HandleHit(Collider col, Vector3 point, Vector3 normal)
+    {
+        // 1) Try IDamageable
+        var dmgable = col.GetComponentInParent<IDamageable>();
+        if (dmgable != null)
+        {
+            dmgable.TakeDamage(damage);
+        }
+        else if (col.CompareTag("Zombie"))
+        {
+            // 2) ZombieHealth or InstaKill
+            var zh = col.GetComponent<ZombieHealth>();
+            if (zh != null)
             {
-                // Check for InstaKill
-                GameObject playerObject = GameObject.FindGameObjectWithTag("Player");
-                if (playerObject != null)
-                {
-                    ThirdPersonMovement playerMovement = playerObject.GetComponent<ThirdPersonMovement>();
-                    
-                    // If player has InstaKill active, use it
-                    if (playerMovement != null && playerMovement.IsInstaKillActive)
-                    {
-                        Debug.Log($"Insta-Killing {hitObject.name}!");
-                        zombieHealth.InstaKill();
-                    }
-                    else
-                    {
-                        // Apply normal damage - this will trigger the red flash effect
-                        Debug.Log($"Dealing normal {damage} damage to {hitObject.name}");
-                        zombieHealth.TakeDamage(damage);
-                    }
-                }
+                var pm = GameObject.FindWithTag("Player")?.GetComponent<ThirdPersonMovement>();
+                if (pm != null && pm.IsInstaKillActive)
+                    zh.InstaKill();
                 else
-                {
-                    // Fallback if player not found
-                    zombieHealth.TakeDamage(damage);
-                }
+                    zh.TakeDamage(damage);
             }
         }
-        // NEW: Check if we hit the final boss
-        else if (hitObject.CompareTag("Boss") || hitObject.GetComponent<FinalBossController>() != null)
+        else if (col.CompareTag("Boss"))
         {
-            // Try to deal damage to the boss
-            FinalBossController bossController = hitObject.GetComponent<FinalBossController>();
-            if (bossController != null)
+            // 3) Boss
+            var boss = col.GetComponent<FinalBossController>();
+            if (boss != null)
             {
-                // Check for InstaKill
-                GameObject playerObject = GameObject.FindGameObjectWithTag("Player");
-                if (playerObject != null)
-                {
-                    ThirdPersonMovement playerMovement = playerObject.GetComponent<ThirdPersonMovement>();
-                    
-                    // If player has InstaKill active, apply massive damage but don't instantly kill boss
-                    if (playerMovement != null && playerMovement.IsInstaKillActive)
-                    {
-                        Debug.Log($"Applying InstaKill bonus damage to boss!");
-                        bossController.TakeDamage(damage * 5f); // 5x damage instead of instant death
-                    }
-                    else
-                    {
-                        // Apply normal damage
-                        Debug.Log($"Dealing normal {damage} damage to boss");
-                        bossController.TakeDamage(damage);
-                    }
-                }
-                else
-                {
-                    // Fallback if player not found
-                    bossController.TakeDamage(damage);
-                }
+                var pm = GameObject.FindWithTag("Player")?.GetComponent<ThirdPersonMovement>();
+                float dmg = (pm != null && pm.IsInstaKillActive) ? damage * 5f : damage;
+                boss.TakeDamage(dmg);
             }
         }
 
-        // Spawn impact effect if provided
+        // spawn impact effect
         if (impactEffectPrefab != null)
-        {
-            Instantiate(impactEffectPrefab, hitPoint, Quaternion.LookRotation(hitNormal));
-        }
+            Instantiate(impactEffectPrefab, point, Quaternion.LookRotation(normal));
 
-        // Destroy the pellet
+        DestroySelf();
+    }
+
+    void DestroySelf()
+    {
+        CancelInvoke();
         Destroy(gameObject);
     }
 }
